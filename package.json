@@ -4,11 +4,12 @@
   "description": "A live web dashboard for the Swiss Expert League Fantasy Premier League mini-league",
   "main": "App.tsx",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "export": "next export",
+  "start": "next start",
+  "lint": "next lint"
+},
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
