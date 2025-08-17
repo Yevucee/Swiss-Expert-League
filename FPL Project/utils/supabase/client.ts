@@ -1,8 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from './info';
+import { createClient } from "@supabase/supabase-js";
 
-// Create a singleton Supabase client
-export const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-);
+const url  = import.meta.env.VITE_SUPABASE_URL!;
+const anon = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(url, anon, {
+  auth: { persistSession: false },
+});
