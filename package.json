@@ -1,0 +1,44 @@
+{
+  "name": "swiss-expert-league-dashboard",
+  "version": "1.0.0",
+  "description": "A live web dashboard for the Swiss Expert League Fantasy Premier League mini-league",
+  "main": "App.tsx",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "next": "^14.0.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "lucide-react": "^0.263.1",
+    "recharts": "^2.8.0",
+    "motion": "^10.16.0",
+    "sonner": "^1.4.0",
+    "tailwindcss": "^4.0.0-alpha.7",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "eslint-config-next": "^14.0.0"
+  },
+  "keywords": [
+    "fantasy-premier-league",
+    "dashboard",
+    "react",
+    "supabase",
+    "tailwindcss"
+  ],
+  "author": "Swiss Expert League",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/swiss-expert-league-dashboard.git"
+  }
+}
