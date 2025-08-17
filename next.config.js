@@ -9,8 +9,8 @@ const nextConfig = {
   images: { unoptimized: true },
 
   // GitHub Pages serves the site under /<repo-name>/
-  basePath: isProd ? '/swiss-expert-league' : '',
-  assetPrefix: isProd ? '/swiss-expert-league/' : '',
+  basePath: isProd ? '/Swiss-Expert-League' : '',
+  assetPrefix: isProd ? '/Swiss-Expert-League/' : '',
 
   // DO NOT expose server-side secrets to the client.
   // Only expose public vars via NEXT_PUBLIC_* at build time.
