@@ -1,102 +1,92 @@
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { Badge } from "./ui/badge";
-import { ChipIcon } from "./ChipIcon";
-import { useLeagueData } from "../hooks/useLeagueData";
-import { chipUsageData } from "../constants/mockData";
+import { useEffect, useState } from "react";
+import { fetchChipUsageRoi, type ChipUsageRoi } from "@/utils/database/queries";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-export function ChipUsageRoi() {
-  const { chipUsageRoi, hasData } = useLeagueData();
-  
-  // Use real data if available, fallback to mock data
-  const displayData = hasData && chipUsageRoi.length > 0 ? chipUsageRoi : chipUsageData;
+function formatRoi(v: number | null | undefined) {
+  if (v === null || v === undefined) return "—";
+  // roi_vs_league_avg is typically “points vs league avg”, show 1 dp
+  const n = Number(v);
+  if (Number.isNaN(n)) return "—";
+  return n.toFixed(1);
+}
 
-  const getChipName = (chip: string) => {
-    const chipMap: { [key: string]: string } = {
-      '3xc': 'Triple Captain',
-      'TC': 'Triple Captain',
-      'BB': 'Bench Boost',
-      'FH': 'Free Hit',
-      'WC': 'Wildcard',
-      'triple_captain': 'Triple Captain',
-      'bench_boost': 'Bench Boost',
-      'free_hit': 'Free Hit',
-      'wildcard': 'Wildcard'
+export default function ChipUsageRoi() {
+  const [rows, setRows] = useState<ChipUsageRoi[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchChipUsageRoi();
+        if (!cancelled) setRows(data);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message ?? "Failed to load chip ROI");
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    return chipMap[chip] || chip;
-  };
+  }, []);
 
-  const getChipIcon = (chip: string) => {
-    const iconMap: { [key: string]: "crown" | "users" | "target" | "shuffle" } = {
-      '3xc': 'crown',
-      'TC': 'crown',
-      'BB': 'users',
-      'FH': 'target',
-      'WC': 'shuffle',
-      'triple_captain': 'crown',
-      'bench_boost': 'users',
-      'free_hit': 'target',
-      'wildcard': 'shuffle',
-      'Triple Captain': 'crown',
-      'Bench Boost': 'users',
-      'Free Hit': 'target',
-      'Wildcard': 'shuffle'
-    };
-    return iconMap[chip] || 'crown';
-  };
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        {error}
+      </div>
+    );
+  }
+
+  if (rows === null) {
+    return (
+      <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
+        Loading chip ROI…
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
+        No chips played yet this season.
+      </div>
+    );
+  }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Chip Usage Performance</CardTitle>
-        {!hasData && (
-          <Badge variant="outline" className="text-xs">Demo Data</Badge>
-        )}
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Manager</TableHead>
-              <TableHead>Chip</TableHead>
-              <TableHead className="text-center">Gameweek</TableHead>
-              <TableHead className="text-right">Points</TableHead>
-              <TableHead className="text-right">ROI vs Avg</TableHead>
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-3 text-lg font-semibold">Best Chip ROI (vs league avg)</div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Manager</TableHead>
+            <TableHead className="hidden sm:table-cell">Team</TableHead>
+            <TableHead>Chip</TableHead>
+            <TableHead>GW</TableHead>
+            <TableHead className="text-right">Points</TableHead>
+            <TableHead className="text-right">ROI</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={`${row.entry_id}-${row.gw}-${row.chip}`}>
+              <TableCell className="font-medium">{row.manager_name}</TableCell>
+              <TableCell className="hidden sm:table-cell">{row.team_name}</TableCell>
+              <TableCell>{row.chip ?? "—"}</TableCell>
+              <TableCell>{row.gw}</TableCell>
+              <TableCell className="text-right">{row.points ?? 0}</TableCell>
+              <TableCell className="text-right">{formatRoi(row.roi_vs_league_avg)}</TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {displayData.slice(0, 12).map((row, index) => (
-              <TableRow key={index}>
-                <TableCell className="font-medium">
-                  {row.manager_name || row.manager}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <ChipIcon chip={getChipIcon(row.chip)} />
-                    <span>{getChipName(row.chip)}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  {row.gw || row.gameweek}
-                </TableCell>
-                <TableCell className="text-right font-bold">
-                  {row.points}
-                </TableCell>
-                <TableCell className="text-right">
-                  <span className={`font-bold ${
-                    (row.roi_vs_league_avg || row.roi || 0) >= 0 
-                      ? 'text-green-600' 
-                      : 'text-red-600'
-                  }`}>
-                    {(row.roi_vs_league_avg || row.roi || 0) >= 0 ? '+' : ''}
-                    {row.roi_vs_league_avg || row.roi || 0}
-                  </span>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
