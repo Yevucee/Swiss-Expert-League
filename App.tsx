@@ -1,22 +1,22 @@
-// shadcn/ui (named exports) — keep as-is
+// UI bits
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Trophy, TrendingUp, TrendingDown, Crown, Award, AlertCircle } from "lucide-react";
 
-// ↓↓↓ CHANGE THESE TO DEFAULT IMPORTS ↓↓↓
-import Header from "./components/Header";
-import LeagueTable from "./components/LeagueTable";
-import StatCard from "./components/StatCard";
-import ChipUsageRoi from "./components/ChipUsageRoi";
-import ManagerOfTheMonth from "./components/ManagerOfTheMonth";
-import LongestGreenStreak from "./components/LongestGreenStreak";
+// Components (match real exports)
+import { Header } from "./components/Header";                 // named
+import { LeagueTable } from "./components/LeagueTable";       // named
+import { StatCard } from "./components/StatCard";             // named
+import ChipUsageRoi from "./components/ChipUsageRoi";         // default
+import { ManagerOfTheMonth } from "./components/ManagerOfTheMonth";  // named
+import { LongestGreenStreak } from "./components/LongestGreenStreak"; // named
 
-// shadcn/ui (named) — keep as-is
+// Alerts
 import { Alert, AlertDescription } from "./components/ui/alert";
 
-// Hook (see step 2 below)
+// Hook (we made it a default export)
 import useLeagueData from "./hooks/useLeagueData";
 
-// (Optional, still fine if you keep for fallback)
+// (optional) mock data fallback if you’re still keeping it
 import { gameweekStats, seasonStats } from "./constants/mockData";
 
 export default function App() {
