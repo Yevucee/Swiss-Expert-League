@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Badge } from "./ui/badge";
 import { Trophy, Crown, Star, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
-import { useLeagueData } from "../hooks/useLeagueData";
+import useLeagueData from "../hooks/useLeagueData";
 import { managerOfMonthTotals as mockData, currentMonthWinner as mockWinner } from "../constants/mockData";
 
 function FireworkParticle({ delay }: { delay: number }) {
