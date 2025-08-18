@@ -13,7 +13,7 @@ import {
   ManagerOfMonthWinner
 } from '../utils/database/queries';
 
-export function useLeagueData() {
+export default function useLeagueData() {
   const [chipUsageRoi, setChipUsageRoi] = useState<ChipUsageRoi[]>([]);
   const [managerOfMonthTotals, setManagerOfMonthTotals] = useState<ManagerOfMonthTotal[]>([]);
   const [managerOfMonthWinners, setManagerOfMonthWinners] = useState<ManagerOfMonthWinner[]>([]);
