@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Badge } from "./ui/badge";
 import { TrendIcon } from "./TrendIcon";
-import { useLeagueData } from "../hooks/useLeagueData";
+import useLeagueData from "../hooks/useLeagueData";
 import { leagueTableData } from "../constants/mockData";
 
 export function LeagueTable() {
