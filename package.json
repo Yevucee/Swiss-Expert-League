@@ -1,48 +1,42 @@
 {
   "name": "swiss-expert-league-dashboard",
   "version": "1.0.0",
+  "private": true,
   "description": "A live web dashboard for the Swiss Expert League Fantasy Premier League mini-league",
-  "main": "App.tsx",
   "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "export": "next export",
-  "start": "next start",
-  "lint": "next lint"
-},
+    "dev": "next dev",
+    "build": "next build",
+    "export": "next export",
+    "start": "next start",
+    "lint": "next lint"
+  },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "next": "^14.0.0",
     "@supabase/supabase-js": "^2.39.0",
     "lucide-react": "^0.263.1",
-    "recharts": "^2.8.0",
     "motion": "^10.16.0",
-    "sonner": "^1.4.0",
-    "tailwindcss": "^3.4.10",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.8.0",
+    "sonner": "^1.4.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.16",
     "eslint": "^8.0.0",
     "eslint-config-next": "^14.0.0",
-
-    "postcss": "^8.4.31",            
-    "autoprefixer": "^10.4.16", 
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.0.0"
   },
   "keywords": [
     "fantasy-premier-league",
     "dashboard",
     "react",
     "supabase",
-    "tailwindcss",
+    "tailwindcss"
   ],
-  "author": "Swiss Expert League",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-username/swiss-expert-league-dashboard.git"
-  }
+  "license": "MIT"
 }
