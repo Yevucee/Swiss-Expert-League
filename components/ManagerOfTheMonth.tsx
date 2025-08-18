@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Badge } from "./ui/badge";
 import { Trophy, Crown, Star, Sparkles } from "lucide-react";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import useLeagueData from "../hooks/useLeagueData";
 import { managerOfMonthTotals as mockData, currentMonthWinner as mockWinner } from "../constants/mockData";
 
