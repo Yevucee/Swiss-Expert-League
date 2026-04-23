@@ -86,7 +86,17 @@ If `league_snapshots` is empty, the app falls back to **`league_standings`** (wi
    - `FPL_DELAY_MS=400` — throttle if FPL returns 429.
    - `FPL_MAX_GW=25` — only sync through that gameweek.
 
-4. Schedule the same command after each deadline (GitHub Actions secrets: `FPL_LEAGUE_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
+4. **Automated sync (GitHub Actions):** workflow **`.github/workflows/sync-fpl.yml`** runs **twice daily** (UTC) and on **manual dispatch** (Actions tab → “Sync FPL data to Supabase” → Run workflow).
+
+   Configure in the repo:
+
+   | Name | Type | Value |
+   |------|------|--------|
+   | `FPL_LEAGUE_ID` | **Secret** | Your FPL classic league ID (numeric) |
+   | `SUPABASE_SERVICE_ROLE_KEY` | **Secret** | Supabase service role key (never use in frontend) |
+   | `NEXT_PUBLIC_SUPABASE_URL` | **Variable** | Same as for Pages deploy, e.g. `https://bxkcrzyuiddzqgnflhfw.supabase.co` |
+
+   The workflow uses `npm ci`, sets `FPL_FETCH_PICKS=1` and `FPL_DELAY_MS=400`. Edit the `cron` in the workflow file if you want a different schedule.
 
 The script upserts **`league_snapshots`**, **`managers`**, **`gw_scores`** (sets `created_at` to the GW **deadline** when known, for any legacy logic), **`captain_scores`** when picks succeed, **`fpl_gameweeks`**, and optionally logs if `fpl_gameweeks` / `league_snapshots` are missing.
 
