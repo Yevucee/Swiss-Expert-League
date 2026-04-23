@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { fetchChipUsageRoi, type ChipUsageRoi } from "@/utils/database/queries";
+import { useLeagueDataContext } from "@/contexts/LeagueDataContext";
 import {
   Table,
   TableBody,
@@ -18,23 +17,7 @@ function formatRoi(v: number | null | undefined) {
 }
 
 export default function ChipUsageRoi() {
-  const [rows, setRows] = useState<ChipUsageRoi[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchChipUsageRoi();
-        if (!cancelled) setRows(data);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Failed to load chip ROI");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { chipUsageRoi: rows, loading, error } = useLeagueDataContext();
 
   if (error) {
     return (
@@ -44,7 +27,7 @@ export default function ChipUsageRoi() {
     );
   }
 
-  if (rows === null) {
+  if (loading && rows.length === 0) {
     return (
       <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">
         Loading chip ROI…

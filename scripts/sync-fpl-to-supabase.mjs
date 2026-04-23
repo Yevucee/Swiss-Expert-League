@@ -1,0 +1,372 @@
+#!/usr/bin/env node
+/**
+ * Sync Fantasy Premier League classic mini-league data into Supabase:
+ *   - league_snapshots (timeline for dashboard)
+ *   - managers, gw_scores, captain_scores (FPL 2 / chip ROI / MOTM views)
+ *   - fpl_gameweeks (deadlines for MOTM month bucketing)
+ *
+ * Usage:
+ *   FPL_LEAGUE_ID=123456 \
+ *   SUPABASE_URL=https://xxxx.supabase.co \
+ *   SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+ *   node scripts/sync-fpl-to-supabase.mjs
+ *
+ * Optional:
+ *   FPL_DELAY_MS=350          delay between HTTP calls (default 350)
+ *   FPL_FETCH_PICKS=1         fetch picks + captain/chip (slower; recommended for production)
+ *   FPL_MAX_GW=38             cap gameweek (default: last finished from bootstrap)
+ *
+ * Requires:
+ *   - public.league_snapshots (supabase/schema/league_snapshots.sql)
+ *   - For upsert idempotency: run supabase/schema/gw_scores_upsert_support.sql
+ *   - MOTM by deadline month: public.fpl_gameweeks + supabase/schema/fpl2_views_manager_of_month.sql
+ */
+
+import { createClient } from "@supabase/supabase-js";
+
+const FPL_BASE = "https://fantasy.premierleague.com/api";
+
+const leagueId = process.env.FPL_LEAGUE_ID;
+const supabaseUrl = process.env.SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const delayMs = Number(process.env.FPL_DELAY_MS ?? 350);
+/** Set FPL_FETCH_PICKS=1 to fill captain/chip in snapshots and gw_scores (many extra API calls). */
+const fetchPicks = process.env.FPL_FETCH_PICKS === "1";
+const maxGwEnv = process.env.FPL_MAX_GW ? Number(process.env.FPL_MAX_GW) : null;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fplFetch(path) {
+  const url = path.startsWith("http") ? path : `${FPL_BASE}${path}`;
+  const res = await fetch(url, { headers: { "User-Agent": "SwissExpertLeagueSync/1.0" } });
+  if (res.status === 429) {
+    await sleep(2000);
+    return fplFetch(path);
+  }
+  if (!res.ok) throw new Error(`FPL ${res.status}: ${url}`);
+  return res.json();
+}
+
+async function collectLeagueEntryIds(leagueId) {
+  const ids = new Set();
+  let page = 1;
+  let hasNext = true;
+  while (hasNext) {
+    const data = await fplFetch(
+      `/leagues-classic/${leagueId}/standings/?page_standings=${page}`
+    );
+    const results = data?.standings?.results ?? [];
+    for (const r of results) {
+      if (r.entry != null) ids.add(r.entry);
+    }
+    hasNext = data?.standings?.has_next === true;
+    page += 1;
+    await sleep(delayMs);
+  }
+  return Array.from(ids);
+}
+
+async function fetchBootstrap() {
+  return fplFetch("/bootstrap-static/");
+}
+
+function buildElementNames(bootstrap) {
+  const map = new Map();
+  for (const el of bootstrap?.elements ?? []) {
+    map.set(el.id, el.web_name ?? el.first_name + " " + el.second_name);
+  }
+  return map;
+}
+
+/** @type {Map<string, number>} */
+const playerGwPointsCache = new Map();
+
+async function getPlayerPointsForGw(elementId, gw) {
+  const key = `${elementId}:${gw}`;
+  if (playerGwPointsCache.has(key)) return playerGwPointsCache.get(key);
+  const data = await fplFetch(`/element-summary/${elementId}/`);
+  await sleep(delayMs);
+  let pts = 0;
+  for (const h of data?.history ?? []) {
+    if (h.round === gw) {
+      pts = h.total_points ?? 0;
+      break;
+    }
+  }
+  playerGwPointsCache.set(key, pts);
+  return pts;
+}
+
+async function fetchEntryHistory(entryId) {
+  const data = await fplFetch(`/entry/${entryId}/history/`);
+  await sleep(delayMs);
+  return data?.current ?? [];
+}
+
+async function fetchEntryMeta(entryId) {
+  const data = await fplFetch(`/entry/${entryId}/`);
+  await sleep(delayMs);
+  return {
+    team_name: data?.name ?? "",
+    manager_name: [data?.player_first_name, data?.player_last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim(),
+  };
+}
+
+async function fetchPicksCaptain(entryId, gw) {
+  const data = await fplFetch(`/entry/${entryId}/event/${gw}/picks/`);
+  await sleep(delayMs);
+  const picks = data?.picks ?? [];
+  const cap = picks.find((p) => p.is_captain);
+  const chip = data?.active_chip ?? null;
+  const captainElement = cap?.element ?? null;
+  return { captainElement, chip };
+}
+
+function gameweekBounds(bootstrap) {
+  const events = bootstrap?.events ?? [];
+  const finished = events.filter((e) => e.finished === true).map((e) => e.id);
+  const current = events.find((e) => e.is_current === true)?.id;
+  const lastFinished = finished.length ? Math.max(...finished) : 0;
+  const gwCapDefault = Math.max(lastFinished, current ?? 0);
+  return { lastFinished, currentGw: current ?? null, gwCapDefault };
+}
+
+/** @param {any} bootstrap */
+function deadlineByGwFromBootstrap(bootstrap) {
+  /** @type {Map<number, string | null>} */
+  const map = new Map();
+  for (const e of bootstrap?.events ?? []) {
+    if (e?.id != null) map.set(e.id, e.deadline_time ?? null);
+  }
+  return map;
+}
+
+async function main() {
+  if (!leagueId) throw new Error("Set FPL_LEAGUE_ID");
+  if (!supabaseUrl) throw new Error("Set SUPABASE_URL");
+  if (!serviceKey) throw new Error("Set SUPABASE_SERVICE_ROLE_KEY");
+
+  console.log("Fetching bootstrap...");
+  const bootstrap = await fetchBootstrap();
+  await sleep(delayMs);
+  const elementNames = buildElementNames(bootstrap);
+  const gwDeadlines = deadlineByGwFromBootstrap(bootstrap);
+  const { lastFinished, currentGw, gwCapDefault } = gameweekBounds(bootstrap);
+  const gwCap = maxGwEnv ?? gwCapDefault;
+  console.log(
+    `League ${leagueId} | last finished GW ${lastFinished}${currentGw ? ` | current ${currentGw}` : ""} | cap ${gwCap}`
+  );
+
+  console.log("Collecting league entries...");
+  const entryIds = await collectLeagueEntryIds(leagueId);
+  console.log(`Found ${entryIds.length} teams`);
+
+  /** @type {Map<number, Map<number, { total_points: number, gw_points: number, entry_id: number }>>} */
+  const byGw = new Map();
+
+  const metaCache = new Map();
+  async function getMeta(entryId) {
+    if (!metaCache.has(entryId)) {
+      metaCache.set(entryId, await fetchEntryMeta(entryId));
+    }
+    return metaCache.get(entryId);
+  }
+
+  for (const entryId of entryIds) {
+    const history = await fetchEntryHistory(entryId);
+    const meta = await getMeta(entryId);
+
+    for (const row of history) {
+      const gw = row.event;
+      if (gw > gwCap) continue;
+
+      if (!byGw.has(gw)) byGw.set(gw, new Map());
+      byGw.get(gw).set(entryId, {
+        entry_id: entryId,
+        total_points: row.total_points ?? 0,
+        gw_points: row.points ?? 0,
+        manager_name: meta.manager_name,
+        team_name: meta.team_name,
+      });
+    }
+  }
+
+  const rows = [];
+
+  const sortedGws = Array.from(byGw.keys()).sort((a, b) => a - b);
+  for (const gw of sortedGws) {
+    const m = byGw.get(gw);
+    const list = Array.from(m.values()).sort(
+      (a, b) => b.total_points - a.total_points
+    );
+    let leagueRank = 1;
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i];
+      if (i > 0 && item.total_points < list[i - 1].total_points) {
+        leagueRank = i + 1;
+      }
+
+      let captain_name = null;
+      let captain_points = null;
+      let captain_id = null;
+      let active_chip = null;
+
+      if (fetchPicks) {
+        try {
+          const { captainElement, chip } = await fetchPicksCaptain(item.entry_id, gw);
+          captain_id = captainElement;
+          active_chip = chip;
+          if (captainElement) {
+            captain_name = elementNames.get(captainElement) ?? null;
+            captain_points = await getPlayerPointsForGw(captainElement, gw);
+            await sleep(delayMs);
+          }
+        } catch (e) {
+          console.warn(`Picks failed entry ${item.entry_id} GW${gw}:`, e.message);
+        }
+      }
+
+      rows.push({
+        gw,
+        entry_id: item.entry_id,
+        rank: leagueRank,
+        manager_name: item.manager_name,
+        team_name: item.team_name,
+        total_points: item.total_points,
+        gw_points: item.gw_points,
+        captain_id,
+        captain_name,
+        captain_points,
+        active_chip,
+      });
+    }
+  }
+
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  const gwRows = (bootstrap?.events ?? []).map((e) => ({
+    gw: e.id,
+    deadline_time: e.deadline_time ?? null,
+    finished: e.finished === true,
+  }));
+  if (gwRows.length) {
+    console.log(`Upserting ${gwRows.length} fpl_gameweeks rows...`);
+    const { error: gwErr } = await supabase.from("fpl_gameweeks").upsert(gwRows, {
+      onConflict: "gw",
+    });
+    if (gwErr) console.warn("fpl_gameweeks upsert (optional table):", gwErr.message);
+  }
+
+  const managerRows = Array.from(metaCache.entries()).map(([entry_id, meta]) => ({
+    entry_id,
+    team_name: meta.team_name,
+    manager_name: meta.manager_name,
+  }));
+
+  if (managerRows.length) {
+    console.log(`Upserting ${managerRows.length} managers...`);
+    const { error: mErr } = await supabase.from("managers").upsert(managerRows, {
+      onConflict: "entry_id",
+    });
+    if (mErr) {
+      console.error("managers upsert error:", mErr);
+      process.exit(1);
+    }
+  }
+
+  const gwScoreRows = rows.map((r) => {
+    const deadline = gwDeadlines.get(r.gw) ?? null;
+    return {
+      entry_id: r.entry_id,
+      gw: r.gw,
+      points: r.gw_points,
+      chip: r.active_chip,
+      captain_id: r.captain_id,
+      captain_points: r.captain_points ?? 0,
+      bench_points: 0,
+      hits: 0,
+      ...(deadline ? { created_at: deadline } : {}),
+    };
+  });
+
+  const captainScoreRows = rows
+    .filter(
+      (r) =>
+        r.captain_id != null &&
+        r.captain_points != null &&
+        r.manager_name &&
+        r.team_name
+    )
+    .map((r) => ({
+      entry_id: r.entry_id,
+      manager_name: r.manager_name,
+      team_name: r.team_name,
+      gameweek: r.gw,
+      captain_points: r.captain_points,
+      captain_player_name: r.captain_name ?? "",
+    }));
+
+  const batch = 200;
+
+  if (gwScoreRows.length) {
+    console.log(`Upserting ${gwScoreRows.length} gw_scores rows...`);
+    for (let i = 0; i < gwScoreRows.length; i += batch) {
+      const chunk = gwScoreRows.slice(i, i + batch);
+      const { error: gsErr } = await supabase.from("gw_scores").upsert(chunk, {
+        onConflict: "entry_id,gw",
+      });
+      if (gsErr) {
+        console.error("gw_scores upsert error:", gsErr);
+        console.error(
+          "If this mentions conflict/deduction, run supabase/schema/gw_scores_upsert_support.sql in Supabase."
+        );
+        process.exit(1);
+      }
+      console.log(`  gw_scores ${Math.min(i + batch, gwScoreRows.length)} / ${gwScoreRows.length}`);
+    }
+  }
+
+  if (captainScoreRows.length) {
+    console.log(`Upserting ${captainScoreRows.length} captain_scores rows...`);
+    for (let i = 0; i < captainScoreRows.length; i += batch) {
+      const chunk = captainScoreRows.slice(i, i + batch);
+      const { error: csErr } = await supabase.from("captain_scores").upsert(chunk, {
+        onConflict: "entry_id,gameweek",
+      });
+      if (csErr) {
+        console.warn("captain_scores upsert:", csErr.message);
+        break;
+      }
+      console.log(
+        `  captain_scores ${Math.min(i + batch, captainScoreRows.length)} / ${captainScoreRows.length}`
+      );
+    }
+  } else if (fetchPicks) {
+    console.log("No captain_scores rows (picks may have failed for all GWs).");
+  }
+
+  console.log(`Upserting ${rows.length} rows into league_snapshots...`);
+  for (let i = 0; i < rows.length; i += batch) {
+    const chunk = rows.slice(i, i + batch);
+    const { error } = await supabase.from("league_snapshots").upsert(chunk, {
+      onConflict: "gw,entry_id",
+    });
+    if (error) {
+      console.error("Supabase upsert error:", error);
+      process.exit(1);
+    }
+    console.log(`  league_snapshots ${Math.min(i + batch, rows.length)} / ${rows.length}`);
+  }
+
+  console.log("Done.");
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

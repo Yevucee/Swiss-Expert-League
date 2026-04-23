@@ -253,7 +253,8 @@ export const managerOfMonthTotals = [
     manager_name: "Thomas Zimmermann",
     team_name: "Alpine Eagles FC",
     month_utc: "2024-01",
-    total_points: 342
+    total_points: 342,
+    points: 342,
   },
   {
     entry_id: 2,
@@ -261,7 +262,8 @@ export const managerOfMonthTotals = [
     manager_name: "Sarah Weber",
     team_name: "Matterhorn United",
     month_utc: "2024-01",
-    total_points: 328
+    total_points: 328,
+    points: 328,
   },
   {
     entry_id: 3,
@@ -269,7 +271,8 @@ export const managerOfMonthTotals = [
     manager_name: "Emma Fischer",
     team_name: "Zurich Zebras",
     month_utc: "2024-01",
-    total_points: 315
+    total_points: 315,
+    points: 315,
   },
   {
     entry_id: 4,
@@ -277,7 +280,8 @@ export const managerOfMonthTotals = [
     manager_name: "Alex Mueller",
     team_name: "Geneva Giants",
     month_utc: "2024-01",
-    total_points: 298
+    total_points: 298,
+    points: 298,
   },
   {
     entry_id: 5,
@@ -285,7 +289,8 @@ export const managerOfMonthTotals = [
     manager_name: "Marco Rossi",
     team_name: "Ticino Tigers",
     month_utc: "2024-01",
-    total_points: 285
+    total_points: 285,
+    points: 285,
   }
 ];
 
@@ -293,7 +298,8 @@ export const currentMonthWinner = {
   month_utc: "2024-01",
   manager_name: "Thomas Zimmermann",
   team_name: "Alpine Eagles FC",
-  total_points: 342
+  total_points: 342,
+  points: 342,
 };
 
 export const greenStreakData = [

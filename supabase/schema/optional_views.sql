@@ -1,0 +1,58 @@
+-- Optional Supabase objects for the Swiss Expert League dashboard.
+-- Run in the Supabase SQL Editor after your base tables (e.g. league_snapshots) exist.
+-- Adjust column names to match your schema.
+
+-- ---------------------------------------------------------------------------
+-- vw_gameweek_highlights: one row per gameweek for snapshot stat cards.
+-- Expected columns (read by utils/database/queries.ts fetchGameweekStats):
+--   gw, highest_score_points, highest_score_manager,
+--   best_captain_points, best_captain_name, best_captain_manager,
+--   biggest_rise_positions, biggest_rise_manager,
+--   biggest_fall_positions, biggest_fall_manager
+-- ---------------------------------------------------------------------------
+-- Example skeleton (replace with real joins to your FPL staging tables):
+--
+-- CREATE OR REPLACE VIEW public.vw_gameweek_highlights AS
+-- SELECT
+--   ls.gw,
+--   MAX(ls.event_points) AS highest_score_points,
+--   (ARRAY_AGG(ls.manager_name ORDER BY ls.event_points DESC))[1] AS highest_score_manager,
+--   0::numeric AS best_captain_points,
+--   '—'::text AS best_captain_name,
+--   '—'::text AS best_captain_manager,
+--   0::int AS biggest_rise_positions,
+--   '—'::text AS biggest_rise_manager,
+--   0::int AS biggest_fall_positions,
+--   '—'::text AS biggest_fall_manager
+-- FROM public.league_snapshots ls
+-- GROUP BY ls.gw;
+
+-- ---------------------------------------------------------------------------
+-- vw_green_streaks: managers ranked by green-streak metrics.
+-- Expected columns (read by fetchGreenStreaks):
+--   manager_name, team_name, current_streak, best_streak, streak_points
+-- ---------------------------------------------------------------------------
+-- Example skeleton:
+--
+-- CREATE OR REPLACE VIEW public.vw_green_streaks AS
+-- SELECT
+--   ls.manager_name,
+--   ls.team_name,
+--   0::int AS current_streak,
+--   0::int AS best_streak,
+--   0::int AS streak_points
+-- FROM public.league_snapshots ls
+-- WHERE false;
+
+-- ---------------------------------------------------------------------------
+-- RLS: the dashboard uses the anon key in the browser. Ensure policies allow
+-- SELECT on these views (and underlying tables if the view is not security
+-- invoker). Typical pattern:
+--
+-- ALTER VIEW public.vw_gameweek_highlights SET (security_invoker = true);
+-- ALTER VIEW public.vw_green_streaks SET (security_invoker = true);
+--
+-- Then grant usage:
+-- GRANT SELECT ON public.vw_gameweek_highlights TO anon, authenticated;
+-- GRANT SELECT ON public.vw_green_streaks TO anon, authenticated;
+-- ---------------------------------------------------------------------------

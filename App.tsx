@@ -17,24 +17,30 @@ import { Alert, AlertDescription } from "./components/ui/alert";
 import useLeagueData from "./hooks/useLeagueData";
 
 // (optional) mock data fallback if you’re still keeping it
-import { gameweekStats, seasonStats } from "./constants/mockData";
+import { seasonStats } from "./constants/mockData";
+
+const emptyGwStats = {
+  highestScore: { points: 0, manager: "—" },
+  bestCaptain: { points: 0, captain: "—", manager: "—" },
+  biggestRise: { positions: 0, manager: "—" },
+  biggestFall: { positions: 0, manager: "—" },
+};
 
 export default function App() {
   const {
-    chipUsageRoi,
-    managerOfMonthTotals,
-    currentMonthWinner,
     bestChipRoi,
-    leagueStandings,
     gameweekStats: liveGameweekStats,
     latestGameweek,
     loading,
-    error,
-    hasData
+    hasData,
+    seasonAggregates,
   } = useLeagueData();
 
-  // Use live data if available, fallback to mock data
-  const displayGameweekStats = liveGameweekStats || gameweekStats;
+  const displayGameweekStats = liveGameweekStats ?? emptyGwStats;
+  const displaySeasonFirst =
+    seasonAggregates?.mostWeeksFirst ?? seasonStats.mostWeeksFirst;
+  const displaySeasonLast =
+    seasonAggregates?.mostWeeksLast ?? seasonStats.mostWeeksLast;
   const displayBestChipRoi = bestChipRoi || { 
     roi_vs_league_avg: seasonStats.bestChipUsage?.roi || 0, 
     manager_name: seasonStats.bestChipUsage?.manager || "Loading...", 
@@ -143,8 +149,8 @@ export default function App() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">{seasonStats.mostWeeksFirst.weeks}</div>
-                <p className="text-sm text-muted-foreground">{seasonStats.mostWeeksFirst.manager}</p>
+                <div className="text-2xl font-bold text-yellow-600">{displaySeasonFirst.weeks}</div>
+                <p className="text-sm text-muted-foreground">{displaySeasonFirst.manager}</p>
               </CardContent>
             </Card>
 
@@ -156,8 +162,8 @@ export default function App() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-gray-600">{seasonStats.mostWeeksLast.weeks}</div>
-                <p className="text-sm text-muted-foreground">{seasonStats.mostWeeksLast.manager}</p>
+                <div className="text-2xl font-bold text-gray-600">{displaySeasonLast.weeks}</div>
+                <p className="text-sm text-muted-foreground">{displaySeasonLast.manager}</p>
               </CardContent>
             </Card>
 

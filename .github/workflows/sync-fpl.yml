@@ -1,0 +1,34 @@
+name: Sync FPL data to Supabase
+
+on:
+  schedule:
+    # Twice daily (UTC); adjust if you prefer a single run after typical deadlines
+    - cron: "0 6,18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run FPL sync
+        env:
+          FPL_LEAGUE_ID: ${{ secrets.FPL_LEAGUE_ID }}
+          SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FPL_FETCH_PICKS: "1"
+          FPL_DELAY_MS: "400"
+        run: npm run sync:fpl
