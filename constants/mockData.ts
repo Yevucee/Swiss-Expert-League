@@ -28,6 +28,10 @@ export const seasonStats = {
     weeks: 3,
     manager: "Peter Keller"
   },
+  mostGwWins: {
+    wins: 5,
+    manager: "Thomas Zimmermann"
+  },
   bestChipUsage: {
     roi: 47,
     manager: "Emma Fischer",

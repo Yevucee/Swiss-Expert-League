@@ -41,6 +41,8 @@ export default function App() {
     seasonAggregates?.mostWeeksFirst ?? seasonStats.mostWeeksFirst;
   const displaySeasonLast =
     seasonAggregates?.mostWeeksLast ?? seasonStats.mostWeeksLast;
+  const displayGwWins =
+    seasonAggregates?.mostGwWins ?? seasonStats.mostGwWins;
   const displayBestChipRoi = bestChipRoi || { 
     roi_vs_league_avg: seasonStats.bestChipUsage?.roi || 0, 
     manager_name: seasonStats.bestChipUsage?.manager || "Loading...", 
@@ -89,7 +91,7 @@ export default function App() {
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 lg:items-start">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Overall records</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <Card className="border-l-4 border-l-yellow-500">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -103,6 +105,23 @@ export default function App() {
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {displaySeasonFirst.manager}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-violet-500">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Trophy className="w-5 h-5 text-violet-600 shrink-0" />
+                    Most GW Wins
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-violet-600">
+                    {displayGwWins?.wins ?? 0}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {displayGwWins?.manager ?? "—"}
                   </p>
                 </CardContent>
               </Card>

@@ -75,6 +75,8 @@ export type LeagueSnapshotTimelineRow = LeagueStandingsRow & { gw: number };
 export type SeasonAggregateStats = {
   mostWeeksFirst: { weeks: number; manager: string; teamName: string };
   mostWeeksLast: { weeks: number; manager: string; teamName: string };
+  /** Highest gameweek win count (solo or shared weekly top score). */
+  mostGwWins?: { wins: number; manager: string; teamName: string };
 };
 
 function numericPoints(row: Record<string, unknown>): number {
@@ -446,6 +448,18 @@ export function latestGwFromTimeline(
   return max;
 }
 
+/** Latest gameweek strictly before `gameweek` that exists in `rows` (for rank deltas). */
+export function previousGwInTimeline(
+  rows: LeagueSnapshotTimelineRow[],
+  gameweek: number
+): number | null {
+  const sorted = Array.from(
+    new Set(rows.map((r) => r.gw).filter((g) => g < gameweek))
+  ).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  return sorted[sorted.length - 1] ?? null;
+}
+
 export function computeGameweekStatsFromTimeline(
   rows: LeagueSnapshotTimelineRow[],
   gameweek: number,
@@ -454,7 +468,7 @@ export function computeGameweekStatsFromTimeline(
   const current = rows.filter((r) => r.gw === gameweek);
   if (current.length === 0) return null;
 
-  const prevGw = gameweek - 1;
+  const prevGw = previousGwInTimeline(rows, gameweek) ?? gameweek - 1;
   const prev = rows.filter((r) => r.gw === prevGw);
   const prevRank = new Map(prev.map((r) => [r.entry_id, r.rank]));
 
@@ -582,6 +596,180 @@ export function computeSeasonAggregates(
       manager: nl?.manager ?? "—",
       teamName: nl?.team ?? "—",
     },
+  };
+}
+
+/** Solo or shared weekly top GW points → count “GW wins” per manager. */
+export function computeMostGwWinsFromTimeline(
+  rows: LeagueSnapshotTimelineRow[]
+): { wins: number; manager: string; teamName: string } | null {
+  if (rows.length === 0) return null;
+
+  const byGw = new Map<number, LeagueSnapshotTimelineRow[]>();
+  for (const r of rows) {
+    const list = byGw.get(r.gw) ?? [];
+    list.push(r);
+    byGw.set(r.gw, list);
+  }
+
+  const winsByEntry = new Map<number, number>();
+  const names = new Map<number, { manager: string; team: string }>();
+
+  byGw.forEach((weekRows) => {
+    if (weekRows.length === 0) return;
+    let maxPts = 0;
+    for (const r of weekRows) {
+      maxPts = Math.max(maxPts, r.gw_points ?? 0);
+    }
+    if (maxPts <= 0) return;
+    for (const r of weekRows) {
+      if ((r.gw_points ?? 0) !== maxPts) continue;
+      winsByEntry.set(r.entry_id, (winsByEntry.get(r.entry_id) ?? 0) + 1);
+      names.set(r.entry_id, {
+        manager: r.manager_name,
+        team: r.team_name,
+      });
+    }
+  });
+
+  let bestEid: number | null = null;
+  let bestW = 0;
+  winsByEntry.forEach((w, eid) => {
+    if (w > bestW) {
+      bestW = w;
+      bestEid = eid;
+    }
+  });
+
+  if (bestEid == null || bestW === 0) return null;
+  const meta = names.get(bestEid);
+  return {
+    wins: bestW,
+    manager: meta?.manager ?? "—",
+    teamName: meta?.team ?? "—",
+  };
+}
+
+/** Season counters from DB (`league_standings` view), maintained by `update_league_standings()`. */
+export async function fetchSeasonRecordsFromLeagueStandings(): Promise<SeasonAggregateStats | null> {
+  try {
+    const { data, error } = await supabase
+      .from("league_standings")
+      .select(
+        "entry_id, weeks_first, weeks_last, gw_wins, manager_name, team_name"
+      );
+
+    if (error || !data?.length) {
+      if (error) console.error("fetchSeasonRecordsFromLeagueStandings:", error);
+      return null;
+    }
+
+    type Row = {
+      entry_id: number;
+      weeks_first: number | null;
+      weeks_last: number | null;
+      gw_wins: number | null;
+      manager_name: string | null;
+      team_name: string | null;
+    };
+
+    const rows = data as Row[];
+
+    const pickMax = <K extends keyof Row>(
+      key: K,
+      num: (v: Row[K]) => number,
+      minValue = 1
+    ): Row | null => {
+      let best: Row | null = null;
+      let bestN = -1;
+      for (const r of rows) {
+        const n = num(r[key]);
+        if (n < minValue) continue;
+        if (n > bestN) {
+          bestN = n;
+          best = r;
+        }
+      }
+      return best;
+    };
+
+    const f = pickMax("weeks_first", (v) => Number(v ?? 0));
+    const l = pickMax("weeks_last", (v) => Number(v ?? 0));
+    const w = pickMax("gw_wins", (v) => Number(v ?? 0));
+
+    if (!f && !l && !w) return null;
+
+    return {
+      mostWeeksFirst: f
+        ? {
+            weeks: Number(f.weeks_first ?? 0),
+            manager: String(f.manager_name ?? "—"),
+            teamName: String(f.team_name ?? "—"),
+          }
+        : { weeks: 0, manager: "—", teamName: "—" },
+      mostWeeksLast: l
+        ? {
+            weeks: Number(l.weeks_last ?? 0),
+            manager: String(l.manager_name ?? "—"),
+            teamName: String(l.team_name ?? "—"),
+          }
+        : { weeks: 0, manager: "—", teamName: "—" },
+      mostGwWins: w
+        ? {
+            wins: Number(w.gw_wins ?? 0),
+            manager: String(w.manager_name ?? "—"),
+            teamName: String(w.team_name ?? "—"),
+          }
+        : undefined,
+    };
+  } catch (e) {
+    console.error("fetchSeasonRecordsFromLeagueStandings:", e);
+    return null;
+  }
+}
+
+/** Prefer DB season counters; fill gaps from timeline computation. */
+export async function resolveSeasonAggregates(
+  timeline: LeagueSnapshotTimelineRow[]
+): Promise<SeasonAggregateStats | null> {
+  const fromDb = await fetchSeasonRecordsFromLeagueStandings();
+  const computed = computeSeasonAggregates(timeline);
+  const gwWins = computeMostGwWinsFromTimeline(timeline);
+
+  if (fromDb) {
+    const out: SeasonAggregateStats = { ...fromDb };
+    const dbWins = out.mostGwWins?.wins ?? 0;
+    if (gwWins && gwWins.wins > dbWins) {
+      out.mostGwWins = {
+        wins: gwWins.wins,
+        manager: gwWins.manager,
+        teamName: gwWins.teamName,
+      };
+    }
+    return out;
+  }
+
+  if (!computed) {
+    return gwWins
+      ? {
+          mostWeeksFirst: {
+            weeks: 0,
+            manager: "—",
+            teamName: "—",
+          },
+          mostWeeksLast: {
+            weeks: 0,
+            manager: "—",
+            teamName: "—",
+          },
+          mostGwWins: gwWins,
+        }
+      : null;
+  }
+
+  return {
+    ...computed,
+    mostGwWins: gwWins ?? undefined,
   };
 }
 
