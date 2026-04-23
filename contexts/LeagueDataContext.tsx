@@ -10,7 +10,6 @@ import {
 import {
   computeGameweekStatsFromTimeline,
   computeGreenStreaksFromTimeline,
-  computeSeasonAggregates,
   fetchChipUsageRoi,
   fetchGreenStreaks,
   fetchLeagueSnapshotFull,
@@ -20,6 +19,7 @@ import {
   getLatestGameweek,
   latestGwFromTimeline,
   listAvailableTables,
+  resolveSeasonAggregates,
   type ChipUsageRoi,
   type GameweekStatsDisplay,
   type GreenStreakRow,
@@ -112,7 +112,7 @@ function useLeagueDataState(): LeagueDataContextValue {
       );
       setGameweekStats(gameweekData);
 
-      setSeasonAggregates(computeSeasonAggregates(timeline));
+      setSeasonAggregates(await resolveSeasonAggregates(timeline));
 
       const greenView = await fetchGreenStreaks();
       if (seq !== loadSeq.current) return;
