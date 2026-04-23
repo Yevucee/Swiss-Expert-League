@@ -8,14 +8,17 @@ import {
   type ReactNode,
 } from "react";
 import {
+  computeGameweekStatsFromTimeline,
+  computeGreenStreaksFromTimeline,
+  computeSeasonAggregates,
   fetchChipUsageRoi,
-  fetchGameweekStats,
   fetchGreenStreaks,
-  fetchLeagueStandings,
+  fetchLeagueSnapshotFull,
   fetchManagerOfMonthTotalsForMonth,
   fetchManagerOfMonthWinners,
   getAvailableMonths,
   getLatestGameweek,
+  latestGwFromTimeline,
   listAvailableTables,
   type ChipUsageRoi,
   type GameweekStatsDisplay,
@@ -23,6 +26,7 @@ import {
   type LeagueStandingsRow,
   type ManagerOfMonthTotal,
   type ManagerOfMonthWinner,
+  type SeasonAggregateStats,
 } from "../utils/database/queries";
 
 const REFRESH_MS = 5 * 60 * 1000;
@@ -39,6 +43,7 @@ export type LeagueDataContextValue = {
   availableMonths: string[];
   greenStreaks: GreenStreakRow[];
   hasGreenStreakData: boolean;
+  seasonAggregates: SeasonAggregateStats | null;
   loading: boolean;
   error: string | null;
   hasData: boolean;
@@ -62,6 +67,8 @@ function useLeagueDataState(): LeagueDataContextValue {
   const [latestGameweek, setLatestGameweek] = useState(24);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [greenStreaks, setGreenStreaks] = useState<GreenStreakRow[]>([]);
+  const [seasonAggregates, setSeasonAggregates] =
+    useState<SeasonAggregateStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadSeq = useRef(0);
@@ -76,34 +83,44 @@ function useLeagueDataState(): LeagueDataContextValue {
         await listAvailableTables();
       }
 
-      const currentGw = await getLatestGameweek();
+      const [{ timeline, rawByGw }, months, chipRoiData, monthWinnersData] =
+        await Promise.all([
+          fetchLeagueSnapshotFull(),
+          getAvailableMonths(),
+          fetchChipUsageRoi(),
+          fetchManagerOfMonthWinners(),
+        ]);
+      if (seq !== loadSeq.current) return;
+      setAvailableMonths(months);
+      setChipUsageRoi(chipRoiData);
+      setManagerOfMonthWinners(monthWinnersData);
+
+      let currentGw = latestGwFromTimeline(timeline);
+      if (currentGw === 0) {
+        currentGw = await getLatestGameweek();
+      }
       if (seq !== loadSeq.current) return;
       setLatestGameweek(currentGw);
 
-      const months = await getAvailableMonths();
-      if (seq !== loadSeq.current) return;
-      setAvailableMonths(months);
-
-      const [
-        chipRoiData,
-        monthWinnersData,
-        standingsData,
-        gameweekData,
-        greenData,
-      ] = await Promise.all([
-        fetchChipUsageRoi(),
-        fetchManagerOfMonthWinners(),
-        fetchLeagueStandings(currentGw),
-        fetchGameweekStats(currentGw),
-        fetchGreenStreaks(),
-      ]);
-      if (seq !== loadSeq.current) return;
-
-      setChipUsageRoi(chipRoiData);
-      setManagerOfMonthWinners(monthWinnersData);
+      const standingsData = timeline.filter((r) => r.gw === currentGw);
       setLeagueStandings(standingsData);
+
+      const gameweekData = computeGameweekStatsFromTimeline(
+        timeline,
+        currentGw,
+        rawByGw
+      );
       setGameweekStats(gameweekData);
-      setGreenStreaks(greenData);
+
+      setSeasonAggregates(computeSeasonAggregates(timeline));
+
+      const greenView = await fetchGreenStreaks();
+      if (seq !== loadSeq.current) return;
+      setGreenStreaks(
+        greenView.length > 0
+          ? greenView
+          : computeGreenStreaksFromTimeline(timeline)
+      );
 
       const winner = monthWinnersData[0] ?? null;
       const monthForTotals =
@@ -174,6 +191,7 @@ function useLeagueDataState(): LeagueDataContextValue {
     availableMonths,
     greenStreaks,
     hasGreenStreakData,
+    seasonAggregates,
     loading,
     error: hasData ? null : error,
     hasData,

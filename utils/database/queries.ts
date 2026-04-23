@@ -69,6 +69,14 @@ export type GameweekStatsDisplay = {
   biggestFall: { positions: number; manager: string };
 };
 
+/** One row per manager per gameweek (after optional GW points inference). */
+export type LeagueSnapshotTimelineRow = LeagueStandingsRow & { gw: number };
+
+export type SeasonAggregateStats = {
+  mostWeeksFirst: { weeks: number; manager: string; teamName: string };
+  mostWeeksLast: { weeks: number; manager: string; teamName: string };
+};
+
 function numericPoints(row: Record<string, unknown>): number {
   const candidates = [
     row.points,
@@ -131,6 +139,369 @@ export function normalizeLeagueSnapshotRow(
     total_points: numericPoints(row),
     gw_points: numericGwPoints(row),
   };
+}
+
+function numericCaptainPoints(row: Record<string, unknown>): number | null {
+  const keys = [
+    "captain_points",
+    "captain_score",
+    "c_points",
+    "captain_pick_points",
+  ];
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === "number" && !Number.isNaN(v)) return v;
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  return null;
+}
+
+function captainNameFromRow(row: Record<string, unknown>): string {
+  const v =
+    row.captain_name ??
+    row.captain ??
+    row.captain_web_name ??
+    row.captain_player_name;
+  return v != null ? String(v) : "";
+}
+
+export function rowToTimelineEntry(
+  row: Record<string, unknown>
+): LeagueSnapshotTimelineRow {
+  const base = normalizeLeagueSnapshotRow(row);
+  const gwRaw = row.gw ?? row.event ?? row.round;
+  const gw =
+    typeof gwRaw === "number"
+      ? gwRaw
+      : typeof gwRaw === "string"
+        ? Number(gwRaw) || 0
+        : 0;
+  return { ...base, gw };
+}
+
+/** Infer per-GW points from season total delta when `gw_points` is missing. */
+export function applyInferredGwPoints(
+  rows: LeagueSnapshotTimelineRow[]
+): LeagueSnapshotTimelineRow[] {
+  const byEntry = new Map<number, LeagueSnapshotTimelineRow[]>();
+  for (const r of rows) {
+    if (!r.entry_id || !r.gw) continue;
+    const list = byEntry.get(r.entry_id) ?? [];
+    list.push({ ...r });
+    byEntry.set(r.entry_id, list);
+  }
+
+  const out: LeagueSnapshotTimelineRow[] = [];
+  byEntry.forEach((list) => {
+    list.sort((a, b) => a.gw - b.gw);
+    for (let i = 0; i < list.length; i++) {
+      const cur = { ...list[i] };
+      if (cur.gw_points == null && i > 0) {
+        const prev = list[i - 1];
+        const delta = cur.total_points - prev.total_points;
+        cur.gw_points = delta >= 0 ? delta : 0;
+      }
+      out.push(cur);
+    }
+  });
+  return out.sort((a, b) => a.gw - b.gw || a.rank - b.rank);
+}
+
+/**
+ * All `league_snapshots` rows (capped) with inferred GW points and raw rows by GW
+ * (for captain columns if present on snapshots).
+ */
+export async function fetchLeagueSnapshotFull(): Promise<{
+  timeline: LeagueSnapshotTimelineRow[];
+  rawByGw: Map<number, Record<string, unknown>[]>;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("league_snapshots")
+      .select("*")
+      .order("gw", { ascending: true })
+      .order("rank", { ascending: true })
+      .limit(25000);
+
+    if (error || !data?.length) {
+      if (error) console.error("fetchLeagueSnapshotFull:", error);
+      return { timeline: [], rawByGw: new Map() };
+    }
+
+    const rawByGw = new Map<number, Record<string, unknown>[]>();
+    const timelineRaw: LeagueSnapshotTimelineRow[] = [];
+
+    for (const row of data) {
+      const rec = row as Record<string, unknown>;
+      const te = rowToTimelineEntry(rec);
+      timelineRaw.push(te);
+      const list = rawByGw.get(te.gw) ?? [];
+      list.push(rec);
+      rawByGw.set(te.gw, list);
+    }
+
+    const timeline = applyInferredGwPoints(timelineRaw);
+    return { timeline, rawByGw };
+  } catch (e) {
+    console.error("fetchLeagueSnapshotFull:", e);
+    return { timeline: [], rawByGw: new Map() };
+  }
+}
+
+export function latestGwFromTimeline(
+  rows: LeagueSnapshotTimelineRow[]
+): number {
+  let max = 0;
+  for (const r of rows) {
+    if (r.gw > max) max = r.gw;
+  }
+  return max;
+}
+
+export function computeGameweekStatsFromTimeline(
+  rows: LeagueSnapshotTimelineRow[],
+  gameweek: number,
+  rawByGw?: Map<number, Record<string, unknown>[]>
+): GameweekStatsDisplay | null {
+  const current = rows.filter((r) => r.gw === gameweek);
+  if (current.length === 0) return null;
+
+  const prevGw = gameweek - 1;
+  const prev = rows.filter((r) => r.gw === prevGw);
+  const prevRank = new Map(prev.map((r) => [r.entry_id, r.rank]));
+
+  const sortedByGwPts = [...current].sort(
+    (a, b) => (b.gw_points ?? 0) - (a.gw_points ?? 0)
+  );
+  const top = sortedByGwPts[0];
+
+  let bestCapPts = 0;
+  let bestCapName = "—";
+  let bestCapManager = "—";
+
+  const rawThis = rawByGw?.get(gameweek);
+  if (rawThis?.length) {
+    for (const raw of rawThis) {
+      const cp = numericCaptainPoints(raw);
+      const cn = captainNameFromRow(raw);
+      const mgr = String(raw.manager_name ?? raw.manager ?? "");
+      if (cp != null && cp > bestCapPts) {
+        bestCapPts = cp;
+        bestCapName = cn || "—";
+        bestCapManager = mgr;
+      }
+    }
+  }
+
+  let rise = 0;
+  let riseMgr = "—";
+  let fall = 0;
+  let fallMgr = "—";
+
+  if (prev.length > 0) {
+    for (const r of current) {
+      const pr = prevRank.get(r.entry_id);
+      if (pr == null) continue;
+      const delta = pr - r.rank;
+      if (delta > rise) {
+        rise = delta;
+        riseMgr = r.manager_name;
+      }
+      if (r.rank - pr > fall) {
+        fall = r.rank - pr;
+        fallMgr = r.manager_name;
+      }
+    }
+  }
+
+  return {
+    highestScore: {
+      points: top?.gw_points ?? top?.total_points ?? 0,
+      manager: top?.manager_name || "Unknown",
+    },
+    bestCaptain: {
+      points: bestCapPts,
+      captain: bestCapName,
+      manager: bestCapManager,
+    },
+    biggestRise: { positions: rise, manager: riseMgr },
+    biggestFall: { positions: fall, manager: fallMgr },
+  };
+}
+
+export function computeSeasonAggregates(
+  rows: LeagueSnapshotTimelineRow[]
+): SeasonAggregateStats | null {
+  if (rows.length === 0) return null;
+
+  const byGw = new Map<number, LeagueSnapshotTimelineRow[]>();
+  for (const r of rows) {
+    const list = byGw.get(r.gw) ?? [];
+    list.push(r);
+    byGw.set(r.gw, list);
+  }
+
+  const weeksFirst = new Map<number, number>();
+  const weeksLast = new Map<number, number>();
+  const names = new Map<number, { manager: string; team: string }>();
+
+  byGw.forEach((weekRows) => {
+    if (weekRows.length === 0) return;
+    let maxRank = 0;
+    for (const r of weekRows) {
+      if (r.rank > maxRank) maxRank = r.rank;
+    }
+    for (const r of weekRows) {
+      names.set(r.entry_id, {
+        manager: r.manager_name,
+        team: r.team_name,
+      });
+      if (r.rank === 1) {
+        weeksFirst.set(r.entry_id, (weeksFirst.get(r.entry_id) ?? 0) + 1);
+      }
+      if (r.rank === maxRank) {
+        weeksLast.set(r.entry_id, (weeksLast.get(r.entry_id) ?? 0) + 1);
+      }
+    }
+  });
+
+  const pickMax = (
+    m: Map<number, number>
+  ): { entry_id: number; weeks: number } | null => {
+    let best: { entry_id: number; weeks: number } | null = null;
+    m.forEach((w, eid) => {
+      if (!best || w > best.weeks) best = { entry_id: eid, weeks: w };
+    });
+    return best;
+  };
+
+  const f = pickMax(weeksFirst);
+  const l = pickMax(weeksLast);
+
+  if (!f && !l) return null;
+
+  const nf = f ? names.get(f.entry_id) : undefined;
+  const nl = l ? names.get(l.entry_id) : undefined;
+
+  return {
+    mostWeeksFirst: {
+      weeks: f?.weeks ?? 0,
+      manager: nf?.manager ?? "—",
+      teamName: nf?.team ?? "—",
+    },
+    mostWeeksLast: {
+      weeks: l?.weeks ?? 0,
+      manager: nl?.manager ?? "—",
+      teamName: nl?.team ?? "—",
+    },
+  };
+}
+
+/** Green streak = consecutive GWs scoring strictly above that week's league average GW score. */
+export function computeGreenStreaksFromTimeline(
+  rows: LeagueSnapshotTimelineRow[]
+): GreenStreakRow[] {
+  if (rows.length === 0) return [];
+
+  const byGw = new Map<number, LeagueSnapshotTimelineRow[]>();
+  for (const r of rows) {
+    const list = byGw.get(r.gw) ?? [];
+    list.push(r);
+    byGw.set(r.gw, list);
+  }
+
+  const gwAvg = new Map<number, number>();
+  byGw.forEach((weekRows) => {
+    const pts = weekRows.map((r) => r.gw_points ?? 0);
+    if (pts.length === 0) return;
+    const sum = pts.reduce((a, b) => a + b, 0);
+    gwAvg.set(weekRows[0].gw, sum / pts.length);
+  });
+
+  const byEntry = new Map<number, LeagueSnapshotTimelineRow[]>();
+  for (const r of rows) {
+    const list = byEntry.get(r.entry_id) ?? [];
+    list.push(r);
+    byEntry.set(r.entry_id, list);
+  }
+
+  const isGreen = (r: LeagueSnapshotTimelineRow) => {
+    const avg = gwAvg.get(r.gw);
+    if (avg == null) return false;
+    return (r.gw_points ?? 0) > avg;
+  };
+
+  const results: GreenStreakRow[] = [];
+
+  byEntry.forEach((timeline) => {
+    const sorted = [...timeline].sort((a, b) => a.gw - b.gw);
+    let bestStreak = 0;
+    let bestSum = 0;
+    let run = 0;
+    let runSum = 0;
+    let prevGwInRun = -1;
+
+    for (const r of sorted) {
+      const g = isGreen(r);
+      const contiguous = prevGwInRun < 0 || r.gw === prevGwInRun + 1;
+      if (g && contiguous) {
+        run += 1;
+        runSum += r.gw_points ?? 0;
+        prevGwInRun = r.gw;
+      } else if (g) {
+        run = 1;
+        runSum = r.gw_points ?? 0;
+        prevGwInRun = r.gw;
+      } else {
+        if (run > bestStreak) {
+          bestStreak = run;
+          bestSum = runSum;
+        }
+        run = 0;
+        runSum = 0;
+        prevGwInRun = -1;
+      }
+      if (run > bestStreak) {
+        bestStreak = run;
+        bestSum = runSum;
+      }
+    }
+
+    let currentStreak = 0;
+    let curSumTail = 0;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const r = sorted[i];
+      const g = isGreen(r);
+      if (!g) break;
+      if (currentStreak === 0) {
+        currentStreak = 1;
+        curSumTail = r.gw_points ?? 0;
+      } else {
+        const prev = sorted[i + 1];
+        if (prev && r.gw === prev.gw - 1) {
+          currentStreak += 1;
+          curSumTail += r.gw_points ?? 0;
+        } else break;
+      }
+    }
+
+    const meta = sorted[0];
+    results.push({
+      manager: meta.manager_name,
+      teamName: meta.team_name,
+      currentStreak,
+      bestStreak,
+      streakPoints: bestSum,
+    });
+  });
+
+  return results
+    .filter((r) => r.bestStreak > 0 || r.currentStreak > 0)
+    .sort((a, b) => b.bestStreak - a.bestStreak)
+    .slice(0, 20);
 }
 
 // Helper function to inspect table structure
@@ -437,51 +808,8 @@ export async function fetchGameweekStats(
       };
     }
 
-    const { data, error } = await supabase
-      .from("league_snapshots")
-      .select("*")
-      .eq("gw", gameweek)
-      .order("rank", { ascending: true });
-
-    if (error) {
-      console.error("Error fetching gameweek data:", error);
-      return null;
-    }
-
-    if (!data || data.length === 0) {
-      console.log("No data found for gameweek:", gameweek);
-      return null;
-    }
-
-    console.log(`Found ${data.length} entries for gameweek ${gameweek}`);
-
-    const normalized = data.map((row) =>
-      normalizeLeagueSnapshotRow(row as Record<string, unknown>)
-    );
-    const sortedByGw = [...normalized].sort(
-      (a, b) => (b.gw_points ?? 0) - (a.gw_points ?? 0)
-    );
-    const topGw = sortedByGw[0];
-
-    return {
-      highestScore: {
-        points: topGw?.gw_points ?? topGw?.total_points ?? 0,
-        manager: topGw?.manager_name || "Unknown",
-      },
-      bestCaptain: {
-        points: 0,
-        captain: "—",
-        manager: "Coming soon",
-      },
-      biggestRise: {
-        positions: 0,
-        manager: "Coming soon",
-      },
-      biggestFall: {
-        positions: 0,
-        manager: "Coming soon",
-      },
-    };
+    const { timeline, rawByGw } = await fetchLeagueSnapshotFull();
+    return computeGameweekStatsFromTimeline(timeline, gameweek, rawByGw);
   } catch (error) {
     console.error("Failed to fetch gameweek stats:", error);
     return null;
