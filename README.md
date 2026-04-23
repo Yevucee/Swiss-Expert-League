@@ -48,11 +48,15 @@ A live web dashboard for the Swiss Expert League Fantasy Premier League private 
 
 The dashboard expects these Supabase views/tables:
 
+### Production project: **FPL 2** (`bxkcrzyuiddzqgnflhfw`)
+
+The live database uses **`league_standings`** (a view over `league_standings_new` + `managers`) with **`gw1_points` … `gw38_points`**, not `league_snapshots`. The app reads that shape when `league_snapshots` is missing or empty and rebuilds per-gameweek ranks from cumulative totals. **`captain_scores`** is merged in when present for captain highlights.
+
 ### Required Views
-- `vw_chip_usage_roi` - Chip usage analysis
+- `vw_chip_usage_roi` - Chip usage analysis (FPL 2: from `gw_scores` + `managers`)
 - `vw_manager_of_month_totals` - Monthly performance rankings
 - `vw_manager_of_month_winners` - Monthly winners
-- `league_snapshots` - Current league standings
+- `league_snapshots` **or** `league_standings` (wide GW columns) — current league data
 
 ### FPL → Supabase sync (backfill and weekly updates)
 
@@ -93,12 +97,12 @@ This repo uses **hosted Supabase**. Project ref is in `utils/supabase/info.tsx` 
 **Test prompt (copy-paste):**
 
 ```
-Using the Supabase MCP server, confirm read-only mode, list tables in the public schema, and show whether these exist: league_snapshots, fpl_gameweeks, vw_chip_usage_roi, vw_manager_of_month_totals, vw_manager_of_month_winners. Do not run destructive SQL.
+Using the Supabase MCP server, confirm read-only mode, list tables in the public schema, and show whether these exist: league_standings, league_standings_new, gw_scores, managers, vw_chip_usage_roi, vw_manager_of_month_totals, vw_manager_of_month_winners. Do not run destructive SQL.
 ```
 
 **Pre-connection checks (repo-only, not a substitute for MCP):**
 
-- Expect `league_snapshots`, optional `fpl_gameweeks`, and views from `supabase/schema/views_from_snapshots.sql` / `optional_views.sql`. Empty tables usually mean sync was not run.
+- **FPL 2:** expect `league_standings` / `league_standings_new`, `managers`, `gw_scores`, and the `vw_*` views above. The repo’s `npm run sync:fpl` path targets `league_snapshots` + optional `fpl_gameweeks` for greenfield setups; use that if you migrate to the snapshot model.
 - If live `league_snapshots` lacks columns expected by the views (`active_chip`, captain columns), view creation or queries may fail—align with `supabase/schema/league_snapshots.sql`.
 - RLS: schema SQL grants **anon SELECT** only; the FPL sync must use the **service role** (`npm run sync:fpl`).
 - This repo has **no** `supabase/migrations/` folder; verify migration history in the Supabase dashboard after MCP connects.
