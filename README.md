@@ -54,6 +54,36 @@ The dashboard expects these Supabase views/tables:
 - `vw_manager_of_month_winners` - Monthly winners
 - `league_snapshots` - Current league standings
 
+### FPL → Supabase sync (backfill and weekly updates)
+
+1. In the **Supabase SQL Editor**, run in order:
+   - `supabase/schema/league_snapshots.sql`
+   - `supabase/schema/fpl_gameweeks.sql` (optional but recommended for manager-of-month deadlines)
+   - After the first successful sync with `FPL_FETCH_PICKS=1`, run `supabase/schema/views_from_snapshots.sql` to create `vw_chip_usage_roi` and manager-of-month views from snapshots.
+
+   If `league_snapshots` already exists, add any missing columns (`captain_id`, `captain_name`, `captain_points`, `active_chip`) from `league_snapshots.sql`.
+
+2. From **Project Settings → API**, copy the **service role** key (server only; never expose in the browser).
+
+3. Run the sync (replace IDs and URL):
+
+   ```bash
+   export FPL_LEAGUE_ID=your_classic_league_id
+   export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+   export SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   npm run sync:fpl
+   ```
+
+   Optional:
+
+   - `FPL_FETCH_PICKS=1` — also calls picks + element-summary for **captain name/points** and `active_chip` (much slower; many HTTP requests).
+   - `FPL_DELAY_MS=400` — throttle if FPL returns 429.
+   - `FPL_MAX_GW=25` — only sync through that gameweek.
+
+4. Schedule the same command after each deadline (GitHub Actions, Supabase cron hitting an Edge Function, or a small VPS).
+
+The script loads every team in the mini-league, pulls each manager’s **`/entry/{id}/history/`**, recomputes **mini-league rank** per GW from **season totals**, and upserts into `league_snapshots`. **`vw_chip_usage_roi`** and **manager-of-month** views still need your SQL or a separate pipeline unless you enable `FPL_FETCH_PICKS=1` and add views that read `active_chip` / monthly rules.
+
 ### Auto-Discovery
 The system automatically discovers your database structure and logs available columns to the console. Check the browser developer tools for detailed information about your database schema.
 
