@@ -84,8 +84,77 @@ export default function App() {
             </AlertDescription>
           </Alert>
         )}
-        
-        {/* Gameweek Snapshot - Top Priority */}
+
+        {/* Overall records + season statistics (side by side on large screens) */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 lg:items-start">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Overall records</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <Card className="border-l-4 border-l-yellow-500">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Crown className="w-5 h-5 text-yellow-600 shrink-0" />
+                    Most Weeks at #1
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {displaySeasonFirst.weeks}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {displaySeasonFirst.manager}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-slate-500">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <TrendingDown className="w-5 h-5 text-slate-600 shrink-0" />
+                    Most Weeks Last Place
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-slate-600">
+                    {displaySeasonLast.weeks}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {displaySeasonLast.manager}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Season statistics</h2>
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+              <p className="text-sm text-blue-800">
+                <strong>Best Chip Usage</strong> = highest positive impact compared to league
+                average. ROI is calculated as (chip week score – average GW score).
+              </p>
+            </div>
+            <Card className="border-l-4 border-l-green-500">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-green-600" />
+                  Best Chip Usage
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">
+                  +{displayBestChipRoi.roi_vs_league_avg}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {displayBestChipRoi.manager_name} (GW {displayBestChipRoi.gw}{" "}
+                  {displayBestChipRoi.chip})
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {/* Gameweek Snapshot */}
         <section>
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Gameweek {latestGameweek} Snapshot
@@ -128,61 +197,6 @@ export default function App() {
 
         {/* Longest Green Streak */}
         <LongestGreenStreak />
-
-        {/* Season Stats with ROI Explainer */}
-        <section>
-          <div className="mb-4">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Season Statistics</h2>
-            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
-              <p className="text-sm text-blue-800">
-                <strong>Best Chip Usage</strong> = highest positive impact compared to league average. 
-                ROI is calculated as (chip week score – average GW score).
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="border-l-4 border-l-yellow-500">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-yellow-600" />
-                  Most Weeks at #1
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">{displaySeasonFirst.weeks}</div>
-                <p className="text-sm text-muted-foreground">{displaySeasonFirst.manager}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-gray-500">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingDown className="w-5 h-5 text-gray-600" />
-                  Most Weeks Last Place
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-600">{displaySeasonLast.weeks}</div>
-                <p className="text-sm text-muted-foreground">{displaySeasonLast.manager}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-green-500">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-green-600" />
-                  Best Chip Usage
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">+{displayBestChipRoi.roi_vs_league_avg}</div>
-                <p className="text-sm text-muted-foreground">
-                  {displayBestChipRoi.manager_name} (GW {displayBestChipRoi.gw} {displayBestChipRoi.chip})
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
 
         {/* Chip Usage ROI Analysis */}
         <section>
