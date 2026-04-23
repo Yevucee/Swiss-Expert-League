@@ -50,22 +50,23 @@ The dashboard expects these Supabase views/tables:
 
 ### Production project: **FPL 2** (`bxkcrzyuiddzqgnflhfw`)
 
-The live database uses **`league_standings`** (a view over `league_standings_new` + `managers`) with **`gw1_points` … `gw38_points`**, not `league_snapshots`. The app reads that shape when `league_snapshots` is missing or empty and rebuilds per-gameweek ranks from cumulative totals. **`captain_scores`** is merged in when present for captain highlights.
+**Recommended:** run `npm run sync:fpl` so **`league_snapshots`** is populated. The app prefers that table for the full per-gameweek timeline (streaks, highest GW, movers, captain in GW cards). The sync also fills **`managers`**, **`gw_scores`**, **`captain_scores`** (when picks are enabled), and **`fpl_gameweeks`**, which power **chip ROI** and **manager of the month**.
 
-### Required Views
-- `vw_chip_usage_roi` - Chip usage analysis (FPL 2: from `gw_scores` + `managers`)
-- `vw_manager_of_month_totals` - Monthly performance rankings
-- `vw_manager_of_month_winners` - Monthly winners
-- `league_snapshots` **or** `league_standings` (wide GW columns) — current league data
+If `league_snapshots` is empty, the app falls back to **`league_standings`** (wide `gw1_points` … `gw38_points`).
+
+### Required views (FPL 2)
+- `vw_chip_usage_roi` — from `gw_scores` + `managers` (chips must be present: use `FPL_FETCH_PICKS=1`)
+- `vw_manager_of_month_totals` / `vw_manager_of_month_winners` — use **`fpl_gameweeks.deadline_time`** for calendar month (see `supabase/schema/fpl2_views_manager_of_month.sql`)
 
 ### FPL → Supabase sync (backfill and weekly updates)
 
-1. In the **Supabase SQL Editor**, run in order:
+1. In the **Supabase SQL Editor**, run in order for **FPL 2** (skip any object that already exists):
    - `supabase/schema/league_snapshots.sql`
-   - `supabase/schema/fpl_gameweeks.sql` (optional but recommended for manager-of-month deadlines)
-   - After the first successful sync with `FPL_FETCH_PICKS=1`, run `supabase/schema/views_from_snapshots.sql` to create `vw_chip_usage_roi` and manager-of-month views from snapshots.
+   - `supabase/schema/fpl_gameweeks.sql`
+   - `supabase/schema/gw_scores_upsert_support.sql` — unique `(entry_id, gw)` on `gw_scores` and `(entry_id, gameweek)` on `captain_scores` for idempotent upserts
+   - `supabase/schema/fpl2_views_manager_of_month.sql` — replaces MOTM views to group by **deadline month** (not `created_at`)
 
-   If `league_snapshots` already exists, add any missing columns (`captain_id`, `captain_name`, `captain_points`, `active_chip`) from `league_snapshots.sql`.
+   **Greenfield / snapshot-only chip+MOTM:** you can instead use `supabase/schema/views_from_snapshots.sql` after snapshots exist (FPL 2 already has `vw_chip_usage_roi` on `gw_scores`).
 
 2. From **Project Settings → API**, copy the **service role** key (server only; never expose in the browser).
 
@@ -75,18 +76,28 @@ The live database uses **`league_standings`** (a view over `league_standings_new
    export FPL_LEAGUE_ID=your_classic_league_id
    export SUPABASE_URL=https://YOUR_PROJECT.supabase.co
    export SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   export FPL_FETCH_PICKS=1
    npm run sync:fpl
    ```
 
    Optional:
 
-   - `FPL_FETCH_PICKS=1` — also calls picks + element-summary for **captain name/points** and `active_chip` (much slower; many HTTP requests).
+   - `FPL_FETCH_PICKS=0` — faster; **no** captain/chip in DB (chip ROI and best-captain cards stay thin).
    - `FPL_DELAY_MS=400` — throttle if FPL returns 429.
    - `FPL_MAX_GW=25` — only sync through that gameweek.
 
-4. Schedule the same command after each deadline (GitHub Actions, Supabase cron hitting an Edge Function, or a small VPS).
+4. Schedule the same command after each deadline (GitHub Actions secrets: `FPL_LEAGUE_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
 
-The script loads every team in the mini-league, pulls each manager’s **`/entry/{id}/history/`**, recomputes **mini-league rank** per GW from **season totals**, and upserts into `league_snapshots`. **`vw_chip_usage_roi`** and **manager-of-month** views still need your SQL or a separate pipeline unless you enable `FPL_FETCH_PICKS=1` and add views that read `active_chip` / monthly rules.
+The script upserts **`league_snapshots`**, **`managers`**, **`gw_scores`** (sets `created_at` to the GW **deadline** when known, for any legacy logic), **`captain_scores`** when picks succeed, **`fpl_gameweeks`**, and optionally logs if `fpl_gameweeks` / `league_snapshots` are missing.
+
+**Verify after a run:**
+
+```sql
+select count(*) from league_snapshots;
+select count(*) from gw_scores;
+select count(*) from fpl_gameweeks;
+select * from vw_manager_of_month_winners order by month_utc desc limit 3;
+```
 
 ### Cursor: Supabase MCP (read-only inspection)
 

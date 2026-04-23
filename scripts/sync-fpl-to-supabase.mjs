@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * Sync Fantasy Premier League classic mini-league data into Supabase `league_snapshots`.
+ * Sync Fantasy Premier League classic mini-league data into Supabase:
+ *   - league_snapshots (timeline for dashboard)
+ *   - managers, gw_scores, captain_scores (FPL 2 / chip ROI / MOTM views)
+ *   - fpl_gameweeks (deadlines for MOTM month bucketing)
  *
  * Usage:
  *   FPL_LEAGUE_ID=123456 \
@@ -10,10 +13,13 @@
  *
  * Optional:
  *   FPL_DELAY_MS=350          delay between HTTP calls (default 350)
- *   FPL_FETCH_PICKS=1         fetch picks + captain points (slower; default 1)
- *   FPL_MAX_GW=38            cap gameweek (default: last finished from bootstrap)
+ *   FPL_FETCH_PICKS=1         fetch picks + captain/chip (slower; recommended for production)
+ *   FPL_MAX_GW=38             cap gameweek (default: last finished from bootstrap)
  *
- * Requires: table public.league_snapshots (see supabase/schema/league_snapshots.sql)
+ * Requires:
+ *   - public.league_snapshots (supabase/schema/league_snapshots.sql)
+ *   - For upsert idempotency: run supabase/schema/gw_scores_upsert_support.sql
+ *   - MOTM by deadline month: public.fpl_gameweeks + supabase/schema/fpl2_views_manager_of_month.sql
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -24,7 +30,7 @@ const leagueId = process.env.FPL_LEAGUE_ID;
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const delayMs = Number(process.env.FPL_DELAY_MS ?? 350);
-/** Set FPL_FETCH_PICKS=1 to fill captain_name/captain_points (many extra API calls). */
+/** Set FPL_FETCH_PICKS=1 to fill captain/chip in snapshots and gw_scores (many extra API calls). */
 const fetchPicks = process.env.FPL_FETCH_PICKS === "1";
 const maxGwEnv = process.env.FPL_MAX_GW ? Number(process.env.FPL_MAX_GW) : null;
 
@@ -130,6 +136,16 @@ function gameweekBounds(bootstrap) {
   return { lastFinished, currentGw: current ?? null, gwCapDefault };
 }
 
+/** @param {any} bootstrap */
+function deadlineByGwFromBootstrap(bootstrap) {
+  /** @type {Map<number, string | null>} */
+  const map = new Map();
+  for (const e of bootstrap?.events ?? []) {
+    if (e?.id != null) map.set(e.id, e.deadline_time ?? null);
+  }
+  return map;
+}
+
 async function main() {
   if (!leagueId) throw new Error("Set FPL_LEAGUE_ID");
   if (!supabaseUrl) throw new Error("Set SUPABASE_URL");
@@ -139,6 +155,7 @@ async function main() {
   const bootstrap = await fetchBootstrap();
   await sleep(delayMs);
   const elementNames = buildElementNames(bootstrap);
+  const gwDeadlines = deadlineByGwFromBootstrap(bootstrap);
   const { lastFinished, currentGw, gwCapDefault } = gameweekBounds(bootstrap);
   const gwCap = maxGwEnv ?? gwCapDefault;
   console.log(
@@ -245,8 +262,95 @@ async function main() {
     if (gwErr) console.warn("fpl_gameweeks upsert (optional table):", gwErr.message);
   }
 
-  console.log(`Upserting ${rows.length} rows into league_snapshots...`);
+  const managerRows = Array.from(metaCache.entries()).map(([entry_id, meta]) => ({
+    entry_id,
+    team_name: meta.team_name,
+    manager_name: meta.manager_name,
+  }));
+
+  if (managerRows.length) {
+    console.log(`Upserting ${managerRows.length} managers...`);
+    const { error: mErr } = await supabase.from("managers").upsert(managerRows, {
+      onConflict: "entry_id",
+    });
+    if (mErr) {
+      console.error("managers upsert error:", mErr);
+      process.exit(1);
+    }
+  }
+
+  const gwScoreRows = rows.map((r) => {
+    const deadline = gwDeadlines.get(r.gw) ?? null;
+    return {
+      entry_id: r.entry_id,
+      gw: r.gw,
+      points: r.gw_points,
+      chip: r.active_chip,
+      captain_id: r.captain_id,
+      captain_points: r.captain_points ?? 0,
+      bench_points: 0,
+      hits: 0,
+      ...(deadline ? { created_at: deadline } : {}),
+    };
+  });
+
+  const captainScoreRows = rows
+    .filter(
+      (r) =>
+        r.captain_id != null &&
+        r.captain_points != null &&
+        r.manager_name &&
+        r.team_name
+    )
+    .map((r) => ({
+      entry_id: r.entry_id,
+      manager_name: r.manager_name,
+      team_name: r.team_name,
+      gameweek: r.gw,
+      captain_points: r.captain_points,
+      captain_player_name: r.captain_name ?? "",
+    }));
+
   const batch = 200;
+
+  if (gwScoreRows.length) {
+    console.log(`Upserting ${gwScoreRows.length} gw_scores rows...`);
+    for (let i = 0; i < gwScoreRows.length; i += batch) {
+      const chunk = gwScoreRows.slice(i, i + batch);
+      const { error: gsErr } = await supabase.from("gw_scores").upsert(chunk, {
+        onConflict: "entry_id,gw",
+      });
+      if (gsErr) {
+        console.error("gw_scores upsert error:", gsErr);
+        console.error(
+          "If this mentions conflict/deduction, run supabase/schema/gw_scores_upsert_support.sql in Supabase."
+        );
+        process.exit(1);
+      }
+      console.log(`  gw_scores ${Math.min(i + batch, gwScoreRows.length)} / ${gwScoreRows.length}`);
+    }
+  }
+
+  if (captainScoreRows.length) {
+    console.log(`Upserting ${captainScoreRows.length} captain_scores rows...`);
+    for (let i = 0; i < captainScoreRows.length; i += batch) {
+      const chunk = captainScoreRows.slice(i, i + batch);
+      const { error: csErr } = await supabase.from("captain_scores").upsert(chunk, {
+        onConflict: "entry_id,gameweek",
+      });
+      if (csErr) {
+        console.warn("captain_scores upsert:", csErr.message);
+        break;
+      }
+      console.log(
+        `  captain_scores ${Math.min(i + batch, captainScoreRows.length)} / ${captainScoreRows.length}`
+      );
+    }
+  } else if (fetchPicks) {
+    console.log("No captain_scores rows (picks may have failed for all GWs).");
+  }
+
+  console.log(`Upserting ${rows.length} rows into league_snapshots...`);
   for (let i = 0; i < rows.length; i += batch) {
     const chunk = rows.slice(i, i + batch);
     const { error } = await supabase.from("league_snapshots").upsert(chunk, {
@@ -256,7 +360,7 @@ async function main() {
       console.error("Supabase upsert error:", error);
       process.exit(1);
     }
-    console.log(`  ... ${Math.min(i + batch, rows.length)} / ${rows.length}`);
+    console.log(`  league_snapshots ${Math.min(i + batch, rows.length)} / ${rows.length}`);
   }
 
   console.log("Done.");
