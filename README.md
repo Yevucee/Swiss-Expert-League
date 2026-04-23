@@ -65,6 +65,7 @@ If `league_snapshots` is empty, the app falls back to **`league_standings`** (wi
    - `supabase/schema/fpl_gameweeks.sql`
    - `supabase/schema/gw_scores_upsert_support.sql` — unique `(entry_id, gw)` on `gw_scores` and `(entry_id, gameweek)` on `captain_scores` for idempotent upserts
    - `supabase/schema/fpl2_views_manager_of_month.sql` — replaces MOTM views to group by **deadline month** (not `created_at`)
+   - If **`gw_scores` upserts fail** with `league_standings is not a table`, run **`supabase/schema/fix_update_league_standings_fn.sql`** (trigger was writing to the `league_standings` **view**; function must update **`league_standings_new`**).
 
    **Greenfield / snapshot-only chip+MOTM:** you can instead use `supabase/schema/views_from_snapshots.sql` after snapshots exist (FPL 2 already has `vw_chip_usage_roi` on `gw_scores`).
 
