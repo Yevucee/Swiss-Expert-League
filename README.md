@@ -84,6 +84,26 @@ The dashboard expects these Supabase views/tables:
 
 The script loads every team in the mini-league, pulls each manager’s **`/entry/{id}/history/`**, recomputes **mini-league rank** per GW from **season totals**, and upserts into `league_snapshots`. **`vw_chip_usage_roi`** and **manager-of-month** views still need your SQL or a separate pipeline unless you enable `FPL_FETCH_PICKS=1` and add views that read `active_chip` / monthly rules.
 
+### Cursor: Supabase MCP (read-only inspection)
+
+This repo uses **hosted Supabase**. Project ref is in `utils/supabase/info.tsx` (`projectId`). MCP config: **`.cursor/mcp.json`** — `read_only=true`, features `database`, `debugging`, `docs`. If production uses a different project, change `project_ref` in that file to match **Project Settings → General** (or the hostname in `NEXT_PUBLIC_SUPABASE_URL`).
+
+**Your steps:** reload MCP or restart Cursor → complete Supabase OAuth when prompted → run the test prompt below in chat.
+
+**Test prompt (copy-paste):**
+
+```
+Using the Supabase MCP server, confirm read-only mode, list tables in the public schema, and show whether these exist: league_snapshots, fpl_gameweeks, vw_chip_usage_roi, vw_manager_of_month_totals, vw_manager_of_month_winners. Do not run destructive SQL.
+```
+
+**Pre-connection checks (repo-only, not a substitute for MCP):**
+
+- Expect `league_snapshots`, optional `fpl_gameweeks`, and views from `supabase/schema/views_from_snapshots.sql` / `optional_views.sql`. Empty tables usually mean sync was not run.
+- If live `league_snapshots` lacks columns expected by the views (`active_chip`, captain columns), view creation or queries may fail—align with `supabase/schema/league_snapshots.sql`.
+- RLS: schema SQL grants **anon SELECT** only; the FPL sync must use the **service role** (`npm run sync:fpl`).
+- This repo has **no** `supabase/migrations/` folder; verify migration history in the Supabase dashboard after MCP connects.
+- **After MCP works:** ask the agent to compare live `information_schema` / policies to `supabase/schema/*.sql` and report gaps (no destructive SQL).
+
 ### Auto-Discovery
 The system automatically discovers your database structure and logs available columns to the console. Check the browser developer tools for detailed information about your database schema.
 
