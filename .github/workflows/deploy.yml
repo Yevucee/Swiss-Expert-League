@@ -30,20 +30,16 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      # If you need public envs at build time, uncomment and set repo Variables
-      # - name: Create .env.local
-      #   run: |
-      #     echo "NEXT_PUBLIC_SUPABASE_URL=${{ vars.SUPABASE_URL }}" >> .env.local
-      #     echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON }}" >> .env.local
-      #     echo "NEXT_PUBLIC_LEAGUE_ID=539005" >> .env.local
+      - name: Create .env.local
+        run: |
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ vars.NEXT_PUBLIC_SUPABASE_URL }}" >> .env.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" >> .env.local
 
       - name: Install dependencies
         run: npm install
 
       - name: Build static site
-        run: |
-          npm run build
-          npm run export
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3   # latest valid version

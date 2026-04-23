@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Badge } from "./ui/badge";
 import { Trophy, Crown, Star, Sparkles } from "lucide-react";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import useLeagueData from "../hooks/useLeagueData";
 import { managerOfMonthTotals as mockData, currentMonthWinner as mockWinner } from "../constants/mockData";
 
@@ -108,14 +108,13 @@ export function ManagerOfTheMonth() {
   // Use real data if available, fallback to mock data
   const displayData = hasData && managerOfMonthTotals.length > 0 ? managerOfMonthTotals : mockData;
   const displayWinner = hasData && currentMonthWinner ? currentMonthWinner : mockWinner;
-  
-  // Get winner data - first in list or the currentMonthWinner
-  const winner = displayData.length > 0 ? displayData[0] : displayWinner;
-  
-  // Get the month to display
-  const monthToDisplay = hasData && availableMonths.length > 0 
-    ? formatMonthDisplay(availableMonths[0])
-    : formatMonthDisplay(winner?.month_utc) || "January 2024";
+
+  const winner = displayWinner;
+
+  const monthToDisplay = formatMonthDisplay(
+    winner?.month_utc ??
+      (availableMonths.length > 0 ? availableMonths[0] : undefined)
+  );
 
   return (
     <section className="relative">

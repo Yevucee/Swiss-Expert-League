@@ -21,15 +21,10 @@ import { gameweekStats, seasonStats } from "./constants/mockData";
 
 export default function App() {
   const {
-    chipUsageRoi,
-    managerOfMonthTotals,
-    currentMonthWinner,
     bestChipRoi,
-    leagueStandings,
     gameweekStats: liveGameweekStats,
     latestGameweek,
     loading,
-    error,
     hasData
   } = useLeagueData();
 

@@ -25,10 +25,11 @@
       "@/components/*": ["./components/*"],
       "@/utils/*": ["./utils/*"],
       "@/hooks/*": ["./hooks/*"],
+      "@/contexts/*": ["./contexts/*"],
       "@/constants/*": ["./constants/*"],
       "@/styles/*": ["./styles/*"]
     }
   },
  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", ".next", "out", "LICENSE", "LICENSE/**"]
+  "exclude": ["node_modules", ".next", "out", "LICENSE", "LICENSE/**", "supabase/functions"]
 }

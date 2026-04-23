@@ -2,8 +2,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Flame, Trophy, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
+import { greenStreakData as mockGreenStreakData } from "../constants/mockData";
+import { useLeagueDataContext } from "../contexts/LeagueDataContext";
 
 export function LongestGreenStreak() {
+  const { greenStreaks, hasGreenStreakData } = useLeagueDataContext();
+  const rows = hasGreenStreakData ? greenStreaks : mockGreenStreakData;
+
   return (
     <section>
       <div className="flex items-center gap-3 mb-6">
@@ -11,11 +16,13 @@ export function LongestGreenStreak() {
           <Flame className="w-6 h-6 text-orange-500" />
           <h2 className="text-2xl font-bold text-gray-900">Longest Green Streak</h2>
         </div>
-        <Badge variant="outline" className="text-xs">Demo Data</Badge>
+        {!hasGreenStreakData && (
+          <Badge variant="outline" className="text-xs">Demo Data</Badge>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {greenStreakData.map((manager, index) => (
+        {rows.map((manager, index) => (
           <motion.div
             key={manager.manager}
             initial={{ scale: 0.95, opacity: 0 }}
