@@ -658,7 +658,7 @@ export function computeSeasonHighlightStats(
 
   const pickGwWins = () => {
     let best: { entryId: number; wins: number; bestScore: number } | null = null;
-    gwWins.forEach((value, entryId) => {
+    for (const [entryId, value] of gwWins.entries()) {
       if (
         !best ||
         value.wins > best.wins ||
@@ -666,17 +666,17 @@ export function computeSeasonHighlightStats(
       ) {
         best = { entryId, ...value };
       }
-    });
+    }
     return best;
   };
 
   const pickMax = (values: Map<number, number>) => {
     let best: { entryId: number; value: number } | null = null;
-    values.forEach((value, entryId) => {
+    for (const [entryId, value] of values.entries()) {
       if (!best || value > best.value) {
         best = { entryId, value };
       }
-    });
+    }
     return best;
   };
 
