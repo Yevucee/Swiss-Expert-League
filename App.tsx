@@ -34,6 +34,7 @@ export default function App() {
     loading,
     hasData,
     seasonAggregates,
+    seasonHighlights,
   } = useLeagueData();
 
   const displayGameweekStats = liveGameweekStats ?? emptyGwStats;
@@ -47,6 +48,8 @@ export default function App() {
     gw: seasonStats.bestChipUsage?.gw || 0, 
     chip: seasonStats.bestChipUsage?.chip || ""
   };
+  const displaySeasonHighlights =
+    seasonHighlights ?? seasonStats.seasonHighlights;
 
   if (loading) {
     return (
@@ -128,6 +131,40 @@ export default function App() {
 
         {/* Longest Green Streak */}
         <LongestGreenStreak />
+
+        {/* Season Records */}
+        <section>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Season Records</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Highest GW Score"
+              value={displaySeasonHighlights.highestGwScore.points.toString()}
+              subtitle={`${displaySeasonHighlights.highestGwScore.manager} (GW ${displaySeasonHighlights.highestGwScore.gw})`}
+              icon={Trophy}
+            />
+            <StatCard
+              title="Most GW Wins"
+              value={displaySeasonHighlights.mostGwWins.wins.toString()}
+              subtitle={displaySeasonHighlights.mostGwWins.manager}
+              icon={Award}
+              color="text-purple-600"
+            />
+            <StatCard
+              title="Captain King"
+              value={displaySeasonHighlights.captainKing.points.toString()}
+              subtitle={displaySeasonHighlights.captainKing.manager}
+              icon={Crown}
+              color="text-yellow-600"
+            />
+            <StatCard
+              title="Most Green Weeks"
+              value={displaySeasonHighlights.mostGreenWeeks.weeks.toString()}
+              subtitle={displaySeasonHighlights.mostGreenWeeks.manager}
+              icon={TrendingUp}
+              color="text-green-600"
+            />
+          </div>
+        </section>
 
         {/* Season Stats with ROI Explainer */}
         <section>

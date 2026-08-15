@@ -77,6 +77,13 @@ export type SeasonAggregateStats = {
   mostWeeksLast: { weeks: number; manager: string; teamName: string };
 };
 
+export type SeasonHighlightStats = {
+  highestGwScore: { points: number; manager: string; teamName: string; gw: number };
+  mostGwWins: { wins: number; manager: string; teamName: string };
+  captainKing: { points: number; manager: string; teamName: string };
+  mostGreenWeeks: { weeks: number; manager: string; teamName: string };
+};
+
 function numericPoints(row: Record<string, unknown>): number {
   const candidates = [
     row.points,
@@ -585,6 +592,126 @@ export function computeSeasonAggregates(
   };
 }
 
+export function computeSeasonHighlightStats(
+  rows: LeagueSnapshotTimelineRow[],
+  rawByGw?: Map<number, Record<string, unknown>[]>
+): SeasonHighlightStats | null {
+  if (rows.length === 0) return null;
+
+  const byGw = new Map<number, LeagueSnapshotTimelineRow[]>();
+  const names = new Map<number, { manager: string; team: string }>();
+  for (const r of rows) {
+    const list = byGw.get(r.gw) ?? [];
+    list.push(r);
+    byGw.set(r.gw, list);
+    names.set(r.entry_id, { manager: r.manager_name, team: r.team_name });
+  }
+
+  let highest: LeagueSnapshotTimelineRow | null = null;
+  const gwWins = new Map<number, { wins: number; bestScore: number }>();
+  const greenWeeks = new Map<number, number>();
+
+  byGw.forEach((weekRows) => {
+    if (weekRows.length === 0) return;
+
+    const points = weekRows.map((r) => r.gw_points ?? 0);
+    const avg = points.reduce((sum, p) => sum + p, 0) / points.length;
+    const bestScore = Math.max(...points);
+
+    for (const r of weekRows) {
+      const gwPoints = r.gw_points ?? 0;
+      if (!highest || gwPoints > (highest.gw_points ?? 0)) {
+        highest = r;
+      }
+      if (gwPoints === bestScore) {
+        const current = gwWins.get(r.entry_id) ?? { wins: 0, bestScore: 0 };
+        gwWins.set(r.entry_id, {
+          wins: current.wins + 1,
+          bestScore: Math.max(current.bestScore, bestScore),
+        });
+      }
+      if (gwPoints > avg) {
+        greenWeeks.set(r.entry_id, (greenWeeks.get(r.entry_id) ?? 0) + 1);
+      }
+    }
+  });
+
+  const captainPoints = new Map<number, number>();
+  rawByGw?.forEach((weekRows) => {
+    for (const raw of weekRows) {
+      const entryRaw = raw.entry_id ?? raw.entry;
+      const entryId =
+        typeof entryRaw === "number"
+          ? entryRaw
+          : typeof entryRaw === "string"
+            ? Number(entryRaw) || 0
+            : 0;
+      const points = numericCaptainPoints(raw);
+      if (!entryId || points == null) continue;
+      captainPoints.set(entryId, (captainPoints.get(entryId) ?? 0) + points);
+    }
+  });
+
+  const pickGwWins = () => {
+    let best: { entryId: number; wins: number; bestScore: number } | null = null;
+    gwWins.forEach((value, entryId) => {
+      if (
+        !best ||
+        value.wins > best.wins ||
+        (value.wins === best.wins && value.bestScore > best.bestScore)
+      ) {
+        best = { entryId, ...value };
+      }
+    });
+    return best;
+  };
+
+  const pickMax = (values: Map<number, number>) => {
+    let best: { entryId: number; value: number } | null = null;
+    values.forEach((value, entryId) => {
+      if (!best || value > best.value) {
+        best = { entryId, value };
+      }
+    });
+    return best;
+  };
+
+  const gwWinsLeader = pickGwWins();
+  const captainLeader = pickMax(captainPoints);
+  const greenLeader = pickMax(greenWeeks);
+
+  const managerFor = (entryId?: number) =>
+    entryId ? names.get(entryId) : undefined;
+  const highestManager = highest ? names.get(highest.entry_id) : undefined;
+  const gwWinsManager = managerFor(gwWinsLeader?.entryId);
+  const captainManager = managerFor(captainLeader?.entryId);
+  const greenManager = managerFor(greenLeader?.entryId);
+
+  return {
+    highestGwScore: {
+      points: highest?.gw_points ?? 0,
+      manager: highestManager?.manager ?? "—",
+      teamName: highestManager?.team ?? "—",
+      gw: highest?.gw ?? 0,
+    },
+    mostGwWins: {
+      wins: gwWinsLeader?.wins ?? 0,
+      manager: gwWinsManager?.manager ?? "—",
+      teamName: gwWinsManager?.team ?? "—",
+    },
+    captainKing: {
+      points: captainLeader?.value ?? 0,
+      manager: captainManager?.manager ?? "—",
+      teamName: captainManager?.team ?? "—",
+    },
+    mostGreenWeeks: {
+      weeks: greenLeader?.value ?? 0,
+      manager: greenManager?.manager ?? "—",
+      teamName: greenManager?.team ?? "—",
+    },
+  };
+}
+
 /** Green streak = consecutive GWs scoring strictly above that week's league average GW score. */
 export function computeGreenStreaksFromTimeline(
   rows: LeagueSnapshotTimelineRow[]
@@ -752,6 +879,7 @@ export async function fetchChipUsageRoi(): Promise<ChipUsageRoi[]> {
     const { data, error } = await supabase
       .from('vw_chip_usage_roi')
       .select('*')
+      .order('gw', { ascending: true })
       .order('roi_vs_league_avg', { ascending: false });
 
     if (error) {
