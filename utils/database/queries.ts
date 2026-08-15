@@ -607,7 +607,9 @@ export function computeSeasonHighlightStats(
     names.set(r.entry_id, { manager: r.manager_name, team: r.team_name });
   }
 
-  let highest: LeagueSnapshotTimelineRow | null = null;
+  let highestScore = 0;
+  let highestEntryId = 0;
+  let highestGw = 0;
   const gwWins = new Map<number, { wins: number; bestScore: number }>();
   const greenWeeks = new Map<number, number>();
 
@@ -620,8 +622,10 @@ export function computeSeasonHighlightStats(
 
     for (const r of weekRows) {
       const gwPoints = r.gw_points ?? 0;
-      if (!highest || gwPoints > (highest.gw_points ?? 0)) {
-        highest = r;
+      if (gwPoints > highestScore) {
+        highestScore = gwPoints;
+        highestEntryId = r.entry_id;
+        highestGw = r.gw;
       }
       if (gwPoints === bestScore) {
         const current = gwWins.get(r.entry_id) ?? { wins: 0, bestScore: 0 };
@@ -682,17 +686,17 @@ export function computeSeasonHighlightStats(
 
   const managerFor = (entryId?: number) =>
     entryId ? names.get(entryId) : undefined;
-  const highestManager = highest ? names.get(highest.entry_id) : undefined;
+  const highestManager = managerFor(highestEntryId);
   const gwWinsManager = managerFor(gwWinsLeader?.entryId);
   const captainManager = managerFor(captainLeader?.entryId);
   const greenManager = managerFor(greenLeader?.entryId);
 
   return {
     highestGwScore: {
-      points: highest?.gw_points ?? 0,
+      points: highestScore,
       manager: highestManager?.manager ?? "—",
       teamName: highestManager?.team ?? "—",
-      gw: highest?.gw ?? 0,
+      gw: highestGw,
     },
     mostGwWins: {
       wins: gwWinsLeader?.wins ?? 0,
