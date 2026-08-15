@@ -11,6 +11,7 @@ import {
   computeGameweekStatsFromTimeline,
   computeGreenStreaksFromTimeline,
   computeSeasonAggregates,
+  computeSeasonHighlightStats,
   fetchChipUsageRoi,
   fetchGreenStreaks,
   fetchLeagueSnapshotFull,
@@ -27,6 +28,7 @@ import {
   type ManagerOfMonthTotal,
   type ManagerOfMonthWinner,
   type SeasonAggregateStats,
+  type SeasonHighlightStats,
 } from "../utils/database/queries";
 
 const REFRESH_MS = 5 * 60 * 1000;
@@ -44,6 +46,7 @@ export type LeagueDataContextValue = {
   greenStreaks: GreenStreakRow[];
   hasGreenStreakData: boolean;
   seasonAggregates: SeasonAggregateStats | null;
+  seasonHighlights: SeasonHighlightStats | null;
   loading: boolean;
   error: string | null;
   hasData: boolean;
@@ -69,6 +72,8 @@ function useLeagueDataState(): LeagueDataContextValue {
   const [greenStreaks, setGreenStreaks] = useState<GreenStreakRow[]>([]);
   const [seasonAggregates, setSeasonAggregates] =
     useState<SeasonAggregateStats | null>(null);
+  const [seasonHighlights, setSeasonHighlights] =
+    useState<SeasonHighlightStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadSeq = useRef(0);
@@ -113,6 +118,7 @@ function useLeagueDataState(): LeagueDataContextValue {
       setGameweekStats(gameweekData);
 
       setSeasonAggregates(computeSeasonAggregates(timeline));
+      setSeasonHighlights(computeSeasonHighlightStats(timeline, rawByGw));
 
       const greenView = await fetchGreenStreaks();
       if (seq !== loadSeq.current) return;
@@ -192,6 +198,7 @@ function useLeagueDataState(): LeagueDataContextValue {
     greenStreaks,
     hasGreenStreakData,
     seasonAggregates,
+    seasonHighlights,
     loading,
     error: hasData ? null : error,
     hasData,

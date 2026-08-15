@@ -45,7 +45,7 @@ export default function ChipUsageRoi() {
 
   return (
     <div className="rounded-xl border bg-white p-4">
-      <div className="mb-3 text-lg font-semibold">Best Chip ROI (vs league avg)</div>
+      <div className="mb-3 text-lg font-semibold">Chip ROI by Gameweek (vs league avg)</div>
       <Table>
         <TableHeader>
           <TableRow>

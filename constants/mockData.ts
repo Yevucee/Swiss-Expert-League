@@ -33,6 +33,25 @@ export const seasonStats = {
     manager: "Emma Fischer",
     gw: 12,
     chip: "Triple Captain"
+  },
+  seasonHighlights: {
+    highestGwScore: {
+      points: 109,
+      manager: "Samuel Polley",
+      gw: 33
+    },
+    mostGwWins: {
+      wins: 5,
+      manager: "Marco Loffel Diaz"
+    },
+    captainKing: {
+      points: 233,
+      manager: "Simon Richle"
+    },
+    mostGreenWeeks: {
+      weeks: 27,
+      manager: "Marco Loffel Diaz"
+    }
   }
 };
 
