@@ -658,7 +658,7 @@ export function computeSeasonHighlightStats(
 
   const pickGwWins = () => {
     let best: { entryId: number; wins: number; bestScore: number } | null = null;
-    for (const [entryId, value] of gwWins.entries()) {
+    for (const [entryId, value] of Array.from(gwWins.entries())) {
       if (
         !best ||
         value.wins > best.wins ||
@@ -672,7 +672,7 @@ export function computeSeasonHighlightStats(
 
   const pickMax = (values: Map<number, number>) => {
     let best: { entryId: number; value: number } | null = null;
-    for (const [entryId, value] of values.entries()) {
+    for (const [entryId, value] of Array.from(values.entries())) {
       if (!best || value > best.value) {
         best = { entryId, value };
       }
